@@ -927,7 +927,8 @@ T.test("修复: 归还被推迟或失败时，定时器必须继续跑（否则�
     T.notNil(Core.ticker, "归还失败后必须继续重试")
 
     Stub.setCVarMode = "normal"
-    Stub.Advance(Core.REFRESH_SECONDS + 1)
+    -- 失败重试走退避（Core.RETRY_INTERVAL），不再每 15 秒轰一次
+    Stub.Advance(Core.RETRY_INTERVAL + 1)
     T.eq(Stub.CVarValue(), "150", "定时器重试最终完成归还")
     T.isNil(Core.ticker, "归还完成后定时器停止")
 end)
@@ -997,13 +998,18 @@ T.test("GetStatus: 字段齐全（含源码级契约检查），live 与 current
         "baseline", "lastApplied", "owned", "inCombat", "inWorld", "context", "role",
         "base", "latency", "home", "world", "specID", "specName", "classFile", "cvarInfo",
         "lastError", "lastErrorAt", "applyCount", "repairs", "externalChange",
-        "schemaFuture", "importedFrom", "refreshSeconds", "reason",
+        "schemaFuture", "importedFrom", "reason",
+        -- 采样策略（不再有 refreshSeconds）
+        "cadence", "settleReason", "settleSamples", "intervalSeconds", "heartbeatSeconds",
+        "converged", "cachedLatency", "cachedLatencyAt", "margin", "hysteresis",
+        "jitter", "smoothed", "samples", "stable", "baseOverride",
     }
     -- 数值型字段：直接核对取值
     T.eq(status.target, 245)
     T.eq(status.current, 150, "current 是决策那一刻读到的快照值")
     T.eq(status.live, 245, "live 是刚向客户端读到的实时值（写入之后）")
-    T.eq(status.refreshSeconds, Core.REFRESH_SECONDS)
+    T.truthy(status.cadence == "settling" or status.cadence == "fixed"
+        or status.cadence == "pending", "cadence 必须是三者之一（实得 " .. tostring(status.cadence) .. "）")
     T.eq(status.reason, "apply")
     T.eq(status.enabled, true)
     T.eq(status.state, Core.STATE.APPLIED)
@@ -1147,30 +1153,95 @@ T.test("事件: CVAR_UPDATE 去抖 0.5 秒，且忽略别的 CVar", function()
     T.eq(Core.lastReason, "cvar-update")
 end)
 
-T.test("定时器: 每 REFRESH_SECONDS 重新读延迟并更新 CVar", function()
+T.test("采样策略: 学习期密集采样，稳定后停止轮询（不再每 15 秒读一次）", function()
     resetWorld({ enabled = true })
     Stub.SetCVarValue(150)
     Stub.worldLatency = 100
 
     Stub.FireEvent("PLAYER_ENTERING_WORLD")
     T.eq(Stub.CVarValue(), "245", "Fire 基础 245，延迟 100 加余量后仍不超过它")
-    T.notNil(Core.ticker)
+    T.truthy(Core.settling, "进入世界后应处于学习期")
+    T.eq(Core.DesiredInterval(), Core.SETTLE_INTERVAL, "学习期用密集间隔")
+    T.eq(Core.tickerInterval, Core.SETTLE_INTERVAL)
 
     Stub.Advance(41) -- 暖机定时器全部跑完
     T.eq(Stub.PendingTimers(), 1, "暖机结束后只剩 ticker")
 
-    Stub.ClearWrites()
-    -- 延迟持续处在高位：算法会先按抖动放大余量、再让平滑值追上去，
-    -- 因此这里断言「必须跟着实时状态动」，而具体数值由算法决定。
-    Stub.worldLatency = 300
-    Stub.Advance(Core.REFRESH_SECONDS * 4)
+    -- 延迟一直没变 → 平滑值不再移动 → 学习期结束
+    T.falsy(Core.settling, "读数稳定后必须结束学习期")
+    T.truthy(Core.GetStatus().converged, "应判定为已收敛")
+    T.eq(Core.DesiredInterval(), Core.HEARTBEAT_SECONDS,
+        "稳定后只保留心跳（实得 " .. tostring(Core.DesiredInterval()) .. " 秒）")
+    T.eq(Core.tickerInterval, Core.HEARTBEAT_SECONDS, "定时器必须换成心跳间隔")
+    T.truthy(Core.HEARTBEAT_SECONDS >= Core.SETTLE_INTERVAL * 10,
+        "心跳至少要比学习期稀疏一个数量级")
 
-    T.truthy(#Stub.writes >= 1, "ticker 到点必须重新读延迟")
-    local written = tonumber(Stub.writes[#Stub.writes].value)
-    T.eq(written, Core.GetStatus().target, "写入值必须等于最近一次算出的目标")
-    T.truthy(written > 245, "延迟从 100 升到 300 后目标必须跟着升（实得 " .. tostring(written) .. "）")
+    -- 心跳到点但延迟没动：不写、不重新决策
+    Stub.ClearWrites()
+    Stub.Advance(Core.HEARTBEAT_SECONDS + 1)
+    T.eq(#Stub.writes, 0, "心跳发现没漂移时不得写 CVar")
+    T.truthy(Core.heartbeatSteady, "应记录为「稳定」而不是重新学习")
+    T.eq(Core.lastReason, "ticker", "心跳走的是 ticker 路径")
+
+    -- 延迟真的漂移了 → 重新学习并跟着改
+    Stub.worldLatency = 320
+    Stub.Advance(Core.HEARTBEAT_SECONDS + 1)
+    T.truthy(Core.settling, "漂移超过阈值后必须重新学习")
+    Stub.Advance(Core.SETTLE_INTERVAL * (Core.MAX_SETTLE_SAMPLES + 2))
+    local written = tonumber(Stub.writes[#Stub.writes] and Stub.writes[#Stub.writes].value)
+    T.notNil(written, "延迟大幅上升后必须写入新值")
+    T.truthy(written > 245, "目标必须跟着上升（实得 " .. tostring(written) .. "）")
     T.inRange(written, Core.WINDOW_MIN, Core.WINDOW_MAX)
     T.eq(Stub.CVarValue(), tostring(written))
+end)
+
+T.test("采样策略: 进入副本 / 团本会重新采样一次", function()
+    resetWorld({ enabled = true })
+    Stub.SetCVarValue(150)
+    Stub.worldLatency = 100
+    Stub.FireEvent("PLAYER_ENTERING_WORLD")
+    Stub.Advance(41)
+    T.falsy(Core.settling, "先进入稳定状态")
+    T.eq(Core.tickerInterval, Core.HEARTBEAT_SECONDS)
+
+    -- 进副本：客户端会发 ZONE_CHANGED_NEW_AREA + PLAYER_ENTERING_WORLD
+    Stub.inInstance = true
+    Stub.instanceType = "party"
+    Stub.FireEvent("PLAYER_ENTERING_WORLD")
+    T.truthy(Core.settling, "进副本必须重新采样")
+    T.eq(Core.settleReason, "enter-world")
+    T.eq(Core.tickerInterval, Core.SETTLE_INTERVAL, "学习期立刻恢复密集采样")
+
+    Stub.Advance(41)
+    T.falsy(Core.settling, "副本里读数稳定后再次停止轮询")
+    T.eq(Core.tickerInterval, Core.HEARTBEAT_SECONDS)
+
+    -- 换区（野外 → 野外）同样重测一次
+    Stub.FireEvent("ZONE_CHANGED_NEW_AREA")
+    T.truthy(Core.settling, "换区也要重新采样")
+    T.eq(Core.settleReason, "zone")
+end)
+
+T.test("采样策略: 登录时先用记住的延迟，不等 GetNetStats", function()
+    -- 上一次会话学到了 300ms
+    resetWorld({ enabled = true, latencyCache = { value = 300, jitter = 0, samples = 5, at = 1000 } })
+    Stub.SetCVarValue(150)
+    Stub.worldLatency = 0 -- 客户端还没报出延迟（登录初期的真实情况）
+    Stub.homeLatency = 0
+
+    Stub.FireEvent("PLAYER_ENTERING_WORLD")
+    local target = tonumber(Stub.CVarValue())
+    T.truthy(target and target > 245,
+        "必须用记住的延迟立刻算出目标，而不是先写一个偏低的 245（实得 " .. tostring(target) .. "）")
+    T.inRange(target, Core.WINDOW_MIN, Core.WINDOW_MAX)
+
+    -- 客户端随后报出真实延迟：学习期会把它校准过来
+    Stub.worldLatency = 100
+    Stub.Advance(41)
+    T.falsy(Core.settling, "校准后结束学习期")
+    local status = Core.GetStatus()
+    T.eq(status.cachedLatency, 100, "记住的延迟必须更新为实测值")
+    T.truthy(status.cachedLatencyAt ~= nil, "要记住学到的时间")
 end)
 
 T.test("暖机: 延迟未知时按计划重试，拿到延迟后停止重试", function()

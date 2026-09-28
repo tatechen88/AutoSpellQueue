@@ -46,6 +46,13 @@ Latency.HYSTERESIS_PER_JITTER = 1.0
 
 Latency.GOOD_ENOUGH_JITTER = 3 -- below this the connection counts as stable
 
+--  Convergence: how the addon decides it has learned the connection and can
+--  stop sampling. Latency does not move much within minutes, so once the
+--  smoothed value stops moving there is nothing left to poll for.
+Latency.MIN_SAMPLES = 3        -- never call it settled on one or two readings
+Latency.STABLE_EPSILON = 3     -- ms the smoothed value may still move and count as settled
+Latency.DRIFT_DEADBAND = 25    -- ms of movement that makes a drift check worth re-sampling
+
 local function FiniteNumber(value, fallback)
     local n = tonumber(value)
     if n == nil or n ~= n or n == math.huge or n == -math.huge then return fallback end
@@ -70,6 +77,35 @@ function Latency.New(maxSamples)
         count = 0,
         smoothed = nil,
         last = nil,
+        stableFor = 0,
+    }
+end
+
+--- Adopts a value remembered from an earlier session.
+--  Deliberately does NOT add a sample: the remembered jitter is used for the
+--  margin until real readings arrive, and the value can be corrected right away
+--  instead of leaving the player with a wrong number until GetNetStats speaks.
+function Latency.Seed(tracker, value, jitter)
+    local seeded = FiniteNumber(value, 0)
+    if seeded <= 0 then return false end
+    tracker.smoothed = seeded
+    tracker.seedJitter = FiniteNumber(jitter, 0)
+    tracker.seeded = true
+    return true
+end
+
+--- True once enough readings agree that more sampling would not change anything.
+function Latency.IsConverged(tracker)
+    if tracker.count < Latency.MIN_SAMPLES then return false end
+    return (tracker.stableFor or 0) >= 1
+end
+
+--- What is worth remembering across sessions (persisted by the runtime).
+function Latency.Snapshot(tracker)
+    return {
+        value = math.floor(Latency.Value(tracker) + 0.5),
+        jitter = math.floor(Latency.Jitter(tracker) + 0.5),
+        samples = tracker.count,
     }
 end
 
@@ -84,12 +120,38 @@ function Latency.Push(tracker, world, home)
     tracker.count = tracker.count + 1
     tracker.last = value
 
-    if tracker.smoothed == nil then
+    -- A remembered value is a guess. If the very first real reading disagrees
+    -- with it, trust the reading instead of gliding towards it for minutes
+    -- (SMOOTH_DOWN is deliberately slow, which would keep the window wrong).
+    if tracker.seeded then
+        tracker.seeded = nil
+        tracker.seedJitter = nil
+        if tracker.smoothed and math.abs(value - tracker.smoothed) > Latency.DRIFT_DEADBAND then
+            tracker.smoothed = value
+            tracker.stableFor = 0
+            local samples = tracker.samples
+            samples[#samples + 1] = value
+            while #samples > tracker.maxSamples do table.remove(samples, 1) end
+            return true
+        end
+    end
+
+    local before = tracker.smoothed
+    if before == nil then
         tracker.smoothed = value
-    elseif value > tracker.smoothed then
-        tracker.smoothed = tracker.smoothed + (value - tracker.smoothed) * Latency.SMOOTH_UP
+    elseif value > before then
+        tracker.smoothed = before + (value - before) * Latency.SMOOTH_UP
     else
-        tracker.smoothed = tracker.smoothed + (value - tracker.smoothed) * Latency.SMOOTH_DOWN
+        tracker.smoothed = before + (value - before) * Latency.SMOOTH_DOWN
+    end
+
+    -- How long the smoothed value has been standing still (used to stop sampling)
+    local moved = before == nil and math.huge or (tracker.smoothed - before)
+    if moved < 0 then moved = -moved end
+    if before ~= nil and moved <= Latency.STABLE_EPSILON then
+        tracker.stableFor = (tracker.stableFor or 0) + 1
+    else
+        tracker.stableFor = 0
     end
 
     local samples = tracker.samples
@@ -105,6 +167,24 @@ function Latency.Reset(tracker)
     tracker.count = 0
     tracker.smoothed = nil
     tracker.last = nil
+    tracker.stableFor = 0
+    tracker.seedJitter = nil
+    tracker.seeded = nil
+end
+
+--- Starts a new learning phase without losing the current estimate.
+--  Keeps the smoothed value (so the applied number does not jump while we
+--  re-learn) and carries the last measured jitter over as the seed, but requires
+--  fresh samples before IsConverged() can be true again. Without this, a zone
+--  change re-used the previous convergence and the learning phase ended after a
+--  single sample, which defeated the point of re-measuring.
+function Latency.Restart(tracker)
+    local jitter = Latency.Jitter(tracker)
+    tracker.samples = {}
+    tracker.count = 0
+    tracker.stableFor = 0
+    tracker.seedJitter = jitter
+    tracker.seeded = tracker.smoothed ~= nil
 end
 
 function Latency.Count(tracker)
@@ -122,7 +202,8 @@ end
 function Latency.Jitter(tracker)
     local samples = tracker.samples
     local n = #samples
-    if n < 2 then return 0 end
+    -- A remembered value carries a remembered jitter until fresh readings exist.
+    if n < 2 then return FiniteNumber(tracker.seedJitter, 0) end
 
     local sum = 0
     for index = 1, n do sum = sum + samples[index] end

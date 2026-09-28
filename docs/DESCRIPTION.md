@@ -49,7 +49,7 @@
    连接稳就少留、抖动大就多留（30–150ms），所以不会出现「稳定网络白留一截」或「抖动网络留不够」
 3. 按场景微调：**城里只用基线**（城里没有战斗节奏），副本 / 团本 / 野外跟着延迟走
 4. 在客户端允许的 0~400ms 内取整
-5. 之后**每 15 秒**重看一次延迟——网速变了，值自己跟着变
+5. 之后**不再固定节奏轮询**：延迟稳定后它就停止检测，只在换区、**进副本 / 团本**，或延迟真的漂移时才重测一次（记忆值会跨会话保留，所以登录时立刻就是正确值）。
 
 你不需要懂上面任何一条。装上就是默认开启。
 
@@ -160,7 +160,7 @@ Which is exactly why it shouldn't be a fixed number.
 2. Adds your **world latency + adaptive headroom** and takes the larger of the two. The headroom is no longer a hardcoded 50 ms: it is derived from the **jitter it measures**, so a stable connection does not waste 50 ms and a noisy one gets more room (30–150 ms).
 3. Adjusts by context: **cities use the baseline only** (no combat pacing there), instances and the open world follow your latency.
 4. Rounds and clamps into the client's 0–400 ms range.
-5. Re-checks latency **every 15 seconds** while enabled — if your connection changes, the value follows. It reacts fast when latency worsens and lets go slowly when it improves, so it never flaps.
+5. After that it **stops probing on a fixed schedule**: once latency settles it only re-checks on a zone change, when you **enter a dungeon or raid**, or when latency really drifts (the learned value is remembered across sessions, so logging in starts you at the right number).
 
 You don't need to understand any of that. It's on by default, and there is nothing to configure.
 

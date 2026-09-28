@@ -15,9 +15,11 @@
 --  3. There is no "pendingTarget" snapshot to replay. After combat the addon
 --     re-reads the live state and decides again, so a combat-time enable or
 --     disable cannot apply a stale value.
---  4. The addon re-evaluates on a slow timer (REFRESH_SECONDS) while enabled,
---     so latency changes actually reach the CVar instead of waiting for the
---     next zone change.
+--  4. The addon does NOT poll on a fixed short timer. It samples only while it
+--     is learning the connection (login, zone change, entering an instance or
+--     raid, spec change, external edits, or a drift check that found movement)
+--     and then settles, remembering the learned latency for the next session.
+--     See the sampling policy comment below Core.WINDOW_MIN.
 --  5. Saved settings are validated on load. Unknown/future schema versions are
 --     never silently downgraded.
 -------------------------------------------------------------------------------
@@ -38,10 +40,27 @@ Core.SV = "AutoSpellQueueDB"
 Core.LEGACY_SV = "Tate_ASQDB"
 Core.SCHEMA_VERSION = 2
 
--- Refresh cadence while enabled. GetNetStats() refreshes its latency values
--- roughly every 30s; 15s keeps the target at most one API update behind
--- without doing meaningful work.
-Core.REFRESH_SECONDS = 15
+-- Sampling policy.
+--
+-- The addon used to re-read the client every 15 seconds forever, which is
+-- pointless work: latency does not move much within minutes, and the events
+-- that actually change the answer (login, zone change, entering an instance or
+-- a raid, a spec change, another addon touching the CVar) are all delivered to
+-- us anyway. So it samples only while it is *learning* the connection and then
+-- settles:
+--
+--   settling  -> sample every SETTLE_INTERVAL until the smoothed value stops
+--                moving, then remember it and go quiet
+--   pending   -> a write or a restore still has to reach the client: keep
+--                retrying (short-lived; combat ends, writes succeed)
+--   settled   -> one cheap drift check every HEARTBEAT_SECONDS; a check only
+--                re-samples when the reading moved past DRIFT_DEADBAND
+Core.SETTLE_INTERVAL = 15
+Core.PENDING_INTERVAL = 15
+Core.RETRY_INTERVAL = 60        -- a write that failed: retry, but not every 15 s
+Core.RETRY_ATTEMPTS = 3         -- after this many failures, back off to the heartbeat
+Core.HEARTBEAT_SECONDS = 300
+Core.MAX_SETTLE_SAMPLES = 8
 
 -- Retry schedule used while the client has no latency reading yet.
 Core.WARMUP_DELAYS = { 2, 5, 10, 20, 40 }
@@ -91,6 +110,9 @@ Core.DEFAULTS = {
     baseOverride = nil,         -- number (50..400) | nil = follow the spec table
     ownership = nil,
     stats = nil,
+    -- Bookkeeping, not a setting: the latency learned last time, so login can
+    -- apply the right value immediately instead of waiting for GetNetStats().
+    latencyCache = nil,
 }
 
 -- Keys that may be written through SetConfig even though their default is nil.
@@ -98,6 +120,7 @@ local OPTIONAL_KEYS = {
     statusBarPos = true,
     baseOverride = true,
     ownership = true,
+    latencyCache = true,
 }
 
 local LIMITS = {
@@ -204,6 +227,25 @@ function Core.Sanitize(db)
         if type(pos) ~= "table" or IsFiniteNumber(pos.x) == nil or IsFiniteNumber(pos.y) == nil then
             db.statusBarPos = nil
             repairs = repairs + 1
+        end
+    end
+
+    -- Remembered latency: only a plausible round-trip time is kept, so a
+    -- corrupted save cannot pin the window to nonsense.
+    local cache = db.latencyCache
+    if cache ~= nil then
+        local value = type(cache) == "table" and IsFiniteNumber(cache.value) or nil
+        local jitter = type(cache) == "table" and IsFiniteNumber(cache.jitter) or 0
+        if value == nil or value < 1 or value > 999 then
+            db.latencyCache = nil
+            repairs = repairs + 1
+        else
+            db.latencyCache = {
+                value = math.floor(value + 0.5),
+                jitter = math.max(0, math.floor((jitter or 0) + 0.5)),
+                samples = math.max(0, math.floor(IsFiniteNumber(cache.samples) or 0)),
+                at = IsFiniteNumber(cache.at),
+            }
         end
     end
 
@@ -530,8 +572,16 @@ end
 --    state, target, value, reason, externalChange, base, role, latency, context
 function Core.Decide(cfg, snap)
     local own = cfg.ownership
+    -- The client reports 0 until it has talked to the world server. A fresh
+    -- login must not apply a too-low window while that happens, so fall back to
+    -- the latency this addon already learned (seeded from the last session).
+    local home, world = snap.home, snap.world
+    if (not world or world <= 0) and (not home or home <= 0) then
+        local known = cfg.latency or 0
+        if known > 0 then world = known end
+    end
     local target, role, base, latency = Formula.ComputeTarget(
-        cfg, snap.specID, snap.classFile, snap.home, snap.world, snap.context)
+        cfg, snap.specID, snap.classFile, home, world, snap.context)
 
     local action = {
         kind = "none",
@@ -617,6 +667,8 @@ local function SetError(reason)
     Core.stateReason = reason
     cfg.stats.lastError = reason
     cfg.stats.lastErrorAt = Now()
+    -- Consecutive failures drive the retry backoff (see Core.DesiredInterval).
+    Core.failures = (Core.failures or 0) + 1
     Core.NotifyError(reason)
 end
 Core.SetError = SetError
@@ -719,6 +771,7 @@ function Core.Execute(action, snap)
             cfg.stats.lastError = nil
             Core.state = Core.STATE.APPLIED
             Core.stateReason = nil
+            Core.failures = 0
         else
             -- Ownership is kept so the value can still be restored later.
             SetError(err)
@@ -732,6 +785,7 @@ function Core.Execute(action, snap)
             cfg.ownership = nil
             Core.state = Core.STATE.DISABLED
             Core.stateReason = nil
+            Core.failures = 0
         else
             -- Keep ownership: the next refresh (or logout) retries.
             SetError(err)
@@ -746,6 +800,18 @@ end
 --  Refresh
 -------------------------------------------------------------------------------
 
+--- Ends the learning phase once the value has stopped moving (or after a cap of
+--- samples, so a genuinely noisy connection cannot keep the sampler running).
+local function UpdateCadence()
+    if not Core.settling then return end
+    Core.settleSamples = (Core.settleSamples or 0) + 1
+    if Latency.IsConverged(Core.latency) or Core.settleSamples >= Core.MAX_SETTLE_SAMPLES then
+        Core.settling = false
+        Core.settleReason = nil
+        Core.RememberLatency()
+    end
+end
+
 --- Re-reads the game state and applies whatever the current settings require.
 function Core.Refresh(reason)
     if not Core.db then return end
@@ -755,12 +821,35 @@ function Core.Refresh(reason)
         return
     end
     local snap = Core.Snapshot()
+
+    -- A settled addon only wakes up for a drift check, and that check does NOT
+    -- feed the tracker: one reading every few minutes must not drag the smoothed
+    -- value (the EMA would jump half way on a single sample) and cause writes.
+    -- It only decides whether re-learning is worth it.
+    if reason == "ticker" and not Core.settling then
+        local reading = (snap.world > 0) and snap.world or snap.home
+        local known = Latency.Value(Core.latency)
+        if not reading or reading <= 0 or known <= 0 then
+            Core.BeginSettle("first-reading")
+        elseif math.abs(reading - known) > Latency.DRIFT_DEADBAND then
+            Core.BeginSettle("drift")
+        else
+            -- Steady: stay settled and go back to sleep.
+            Core.heartbeatSteady = true
+            Core.SyncTicker()
+            return
+        end
+        Core.heartbeatSteady = false
+    end
+
     -- Feed the tracker first: this refresh's margin and hysteresis come from
     -- the connection as measured so far, not from a number a player typed.
     Core.TrackLatency(snap)
     local options = Core.EffectiveOptions()
     local action = Core.Decide(options, snap)
     local result = Core.Execute(action, snap)
+
+    UpdateCadence()
     -- A deferred or failed restore must keep retrying even after the addon is
     -- switched off, so the timer follows the work, not just the switch.
     Core.SyncTicker()
@@ -852,7 +941,6 @@ function Core.GetStatus()
         externalChange = Core.externalChange and true or false,
         schemaFuture = cfg.schemaFuture and true or false,
         importedFrom = cfg.importedFrom,
-        refreshSeconds = Core.REFRESH_SECONDS,
         reason = Core.lastReason,
         -- What the algorithm decided for itself (no longer player settings).
         baseOverride = cfg.baseOverride,
@@ -862,6 +950,17 @@ function Core.GetStatus()
         smoothed = Latency.Value(Core.latency),
         samples = Latency.Count(Core.latency),
         stable = Latency.IsStable(Core.latency),
+        -- Sampling policy: what the addon is doing right now and how often it
+        -- intends to wake up (nil = it has stopped waking up at all).
+        cadence = Core.settling and "settling"
+            or (Core.state == Core.STATE.PENDING and "pending" or "fixed"),
+        settleReason = Core.settleReason,
+        settleSamples = Core.settleSamples,
+        intervalSeconds = Core.DesiredInterval(),
+        heartbeatSeconds = Core.HEARTBEAT_SECONDS,
+        converged = Latency.IsConverged(Core.latency),
+        cachedLatency = type(cfg.latencyCache) == "table" and cfg.latencyCache.value or nil,
+        cachedLatencyAt = type(cfg.latencyCache) == "table" and cfg.latencyCache.at or nil,
     }
 end
 
@@ -879,11 +978,16 @@ local function NewTimer(seconds, callback)
 end
 Core.After = NewTimer
 
-function Core.StartTicker()
-    if Core.ticker then return end
+function Core.StartTicker(seconds)
+    seconds = seconds or Core.SETTLE_INTERVAL
+    -- One ticker with the cadence the current state needs; changing cadence means
+    -- replacing it (C_Timer.NewTicker has a fixed interval).
+    if Core.ticker and Core.tickerInterval == seconds then return end
+    Core.StopTicker()
     if not (C_Timer and C_Timer.NewTicker) then return end
-    Core.ticker = C_Timer.NewTicker(Core.REFRESH_SECONDS, function()
-        Core.Refresh("timer")
+    Core.tickerInterval = seconds
+    Core.ticker = C_Timer.NewTicker(seconds, function()
+        Core.Refresh("ticker")
     end)
 end
 
@@ -892,19 +996,73 @@ function Core.StopTicker()
         if Core.ticker.Cancel then Core.ticker:Cancel() end
         Core.ticker = nil
     end
+    Core.tickerInterval = nil
 end
 
---- Keeps the refresh timer alive while there is still work to do: either the
---- addon is enabled, or it still owns a value it has not managed to give back
---- (deferred because of combat, or a failed write). Without this, "leave no
---- trace" would stall until the next zone change.
-function Core.SyncTicker()
+--- The cadence this state needs, or nil when the addon should not wake up at all.
+--  Exposed for tests and for /asq status: "how often does this thing run?"
+function Core.DesiredInterval()
     local cfg = Core.db
-    if cfg and (cfg.enabled or (cfg.ownership and cfg.ownership.active)) then
-        Core.StartTicker()
-    else
-        Core.StopTicker()
+    if not cfg then return nil end
+    local owning = cfg.ownership and cfg.ownership.active
+    if not (cfg.enabled or owning) then return nil end        -- nothing left to do
+    if Core.settling then return Core.SETTLE_INTERVAL end     -- still learning
+    if Core.state == Core.STATE.PENDING then return Core.PENDING_INTERVAL end
+    if Core.state == Core.STATE.ERROR then
+        -- A failed write/restore must keep being retried (the player's value is
+        -- still owed), but with backoff: hammering a read-only CVar every 15 s
+        -- forever is exactly the pointless polling this policy removes.
+        if (Core.failures or 0) <= Core.RETRY_ATTEMPTS then return Core.RETRY_INTERVAL end
+        return Core.HEARTBEAT_SECONDS
     end
+    -- Settled: a slow drift check only.
+    return Core.HEARTBEAT_SECONDS
+end
+
+--- Keeps the refresh timer in step with the state: learning, owing the player a
+--- value, or settled. Without this, "leave no trace" would stall until the next
+--- zone change; with it, a settled addon wakes up 20x less often than it used to.
+function Core.SyncTicker()
+    local wanted = Core.DesiredInterval()
+    if wanted == nil then
+        Core.StopTicker()
+        return
+    end
+    Core.StartTicker(wanted)
+end
+
+--- Starts a learning phase. Called on the events that can change the answer:
+--- login/zoning, entering an instance or raid, and spec changes.
+function Core.BeginSettle(reason)
+    Core.settling = true
+    Core.settleReason = reason
+    Core.settleSamples = 0
+    -- Require fresh samples: reusing the previous convergence would end the
+    -- learning phase after a single reading, defeating the point of re-measuring.
+    Latency.Restart(Core.latency)
+end
+
+--- Ends the learning phase and remembers what was learned, so the next session
+--- can apply the right value before GetNetStats() reports anything.
+function Core.RememberLatency()
+    local cfg = Core.db
+    if not cfg then return end
+    local snapshot = Latency.Snapshot(Core.latency)
+    if snapshot.value <= 0 then return end
+    local previous = cfg.latencyCache
+    if type(previous) == "table" and previous.value == snapshot.value
+        and previous.jitter == snapshot.jitter then
+        return
+    end
+    snapshot.at = Now()
+    cfg.latencyCache = snapshot
+end
+
+--- Adopts the remembered latency (if any) so the first decision is already right.
+function Core.SeedLatency()
+    local cache = Core.GetConfig().latencyCache
+    if type(cache) ~= "table" then return false end
+    return Latency.Seed(Core.latency, cache.value, cache.jitter)
 end
 
 --- Re-checks a few times after login, because GetNetStats() reports 0 until
@@ -948,9 +1106,12 @@ local HANDLERS = {
     PLAYER_ENTERING_WORLD = function()
         if not Core.initialized then Core.GetConfig() end
         Core.inWorld = true
-        -- A new session/zoning means a new connection context: old samples
-        -- would otherwise keep a stale margin alive.
+        -- A new session, a new zone or an instance/raid entry is a new connection
+        -- context: drop the old samples, adopt the remembered latency so the very
+        -- first decision is already sensible, and learn again from there.
         Latency.Reset(Core.latency)
+        Core.SeedLatency()
+        Core.BeginSettle("enter-world")
         Core.Refresh("enter-world")
         if Core.GetConfig().enabled then
             Core.ScheduleWarmup()
@@ -960,9 +1121,14 @@ local HANDLERS = {
     PLAYER_SPECIALIZATION_CHANGED = function(unit)
         -- Fires for party/raid members too; only the player matters here.
         if unit ~= nil and unit ~= "player" then return end
+        -- The base value changed, the connection did not: no re-learning needed.
         Core.Refresh("spec")
     end,
-    ZONE_CHANGED_NEW_AREA = function() Core.Refresh("zone") end,
+    ZONE_CHANGED_NEW_AREA = function()
+        -- Walking into a dungeon/raid fires this (plus PLAYER_ENTERING_WORLD).
+        Core.BeginSettle("zone")
+        Core.Refresh("zone")
+    end,
     ZONE_CHANGED = function() Core.Refresh("zone-changed") end,
     PLAYER_REGEN_ENABLED = function()
         -- Re-decide from the live state instead of replaying a stale target.

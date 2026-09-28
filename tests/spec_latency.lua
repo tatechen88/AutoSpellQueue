@@ -101,6 +101,83 @@ T.test("Latency: 窗口有上限，且 Reset 能清空", function()
     T.eq(Latency.Jitter(tracker), 0)
 end)
 
+T.test("Latency: 收敛判定（够样本 + 平滑值不再移动）", function()
+    local tracker = Latency.New()
+    T.falsy(Latency.IsConverged(tracker), "没有样本不能算收敛")
+
+    Latency.Push(tracker, 100, 0)
+    Latency.Push(tracker, 100, 0)
+    T.falsy(Latency.IsConverged(tracker), "样本不足不能算收敛")
+
+    Latency.Push(tracker, 100, 0)
+    T.truthy(Latency.IsConverged(tracker), "足够样本且值没动 → 收敛")
+
+    -- 值又开始移动 → 立刻取消收敛
+    Latency.Push(tracker, 400, 0)
+    T.falsy(Latency.IsConverged(tracker), "读数大跳后必须重新学习")
+end)
+
+T.test("Latency: Seed 采用记住的值，但不污染样本窗口", function()
+    local tracker = Latency.New()
+    T.truthy(Latency.Seed(tracker, 300, 12))
+    T.eq(Latency.Value(tracker), 300, "立刻就有可用的值")
+    T.eq(Latency.Count(tracker), 0, "记忆值不算样本")
+    T.eq(Latency.Jitter(tracker), 12, "同时记住抖动，余量一开始就合理")
+
+    -- 拿到真实读数后，抖动改用实测
+    Latency.Push(tracker, 100, 0)
+    Latency.Push(tracker, 100, 0)
+    T.eq(Latency.Jitter(tracker), 0, "有实测样本后不再用记忆的抖动")
+    T.falsy(Latency.IsConverged(tracker), "刚播种还不算收敛（样本不足）")
+
+    T.falsy(Latency.Seed(tracker, 0, 0), "0 不是有效的记忆值")
+    Latency.Reset(tracker)
+    T.eq(Latency.Value(tracker), 0, "Reset 清掉记忆值")
+    T.eq(Latency.Jitter(tracker), 0)
+end)
+
+T.test("Latency: Snapshot 给出可持久化的值", function()
+    local tracker = Latency.New()
+    for _ = 1, 5 do Latency.Push(tracker, 120, 0) end
+    local snapshot = Latency.Snapshot(tracker)
+    T.eq(snapshot.value, 120)
+    T.eq(snapshot.jitter, 0)
+    T.eq(snapshot.samples, 5)
+end)
+
+T.test("Latency: 记忆值与实测差太远时立刻改用实测（不许慢慢滑几分钟）", function()
+    local tracker = Latency.New()
+    Latency.Seed(tracker, 300, 10) -- 上次会话学到 300
+    Latency.Push(tracker, 100, 0)  -- 这次实际只有 100
+    T.eq(Latency.Value(tracker), 100,
+        "第一笔实测与记忆值差超过死区时必须直接采用实测值")
+
+    Latency.Push(tracker, 100, 0)
+    Latency.Push(tracker, 100, 0)
+    T.truthy(Latency.IsConverged(tracker), "纠正后应很快收敛")
+
+    -- 接近的读数则保持平滑（记忆值有用时不要跳）
+    local smooth = Latency.New()
+    Latency.Seed(smooth, 100, 0)
+    Latency.Push(smooth, 110, 0) -- 差 10ms，在死区之内
+    local value = Latency.Value(smooth)
+    T.truthy(value > 100 and value < 110, "小差异应平滑过渡（实得 " .. value .. "）")
+end)
+
+T.test("Latency: Restart 保留估计值，但要求重新采样", function()
+    local tracker = Latency.New()
+    for _ = 1, 5 do Latency.Push(tracker, 120, 0) end
+    T.truthy(Latency.IsConverged(tracker))
+
+    Latency.Restart(tracker)
+    T.eq(Latency.Value(tracker), 120, "重启学习期不得丢掉已有估计（否则数值会跳）")
+    T.falsy(Latency.IsConverged(tracker), "重启后必须重新攒样本")
+    T.eq(Latency.Count(tracker), 0)
+
+    for _ = 1, 3 do Latency.Push(tracker, 120, 0) end
+    T.truthy(Latency.IsConverged(tracker), "重新采样稳定后再次收敛")
+end)
+
 T.test("Latency: Describe 一次给出三个有限值", function()
     local tracker = Latency.New()
     Latency.Push(tracker, 80, 0)

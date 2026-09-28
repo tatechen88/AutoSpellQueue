@@ -175,7 +175,10 @@ end
 --- "These numbers are a sample of the last computation" - with its age when the
 --- core reports when the snapshot was taken.
 local function SampledText(status)
-    local text = Format("HINT_SAMPLED", NumText(status.refreshSeconds) or 0)
+    -- No fixed refresh interval any more: say what the sampler is actually doing.
+    local key = "HINT_SAMPLED_SETTLING"
+    if status.cadence == "fixed" then key = "HINT_SAMPLED_FIXED" end
+    local text = L(key)
     local at = NumText(status.snapshotAt)
     if at then
         local seconds = math.max(0, math.floor(Core.Now() - at))
@@ -184,8 +187,20 @@ local function SampledText(status)
     return text
 end
 
-local function CvarText(info)
-    if type(info) ~= "table" then return L("VALUE_UNAVAILABLE") end
+--- Human wording for the sampling policy the core reports.
+local function CadenceText(status)
+    local cadence = status.cadence
+    local interval = NumText(status.intervalSeconds)
+    if cadence == "settling" then
+        return Format("CADENCE_SETTLING", NumText(status.settleSamples) or 0)
+    end
+    if cadence == "pending" then
+        return Format("CADENCE_PENDING", interval or 15)
+    end
+    return Format("CADENCE_FIXED", interval or NumText(status.heartbeatSeconds) or 300)
+end
+
+local function CvarText(info)    if type(info) ~= "table" then return L("VALUE_UNAVAILABLE") end
     if not info.known then return L("CVAR_MISSING") end
     local parts = { L("CVAR_NORMAL") }
     if info.isReadOnly then parts[#parts + 1] = L("CVAR_READONLY") end
@@ -1130,6 +1145,11 @@ local function DiagnosticLines(status)
     Add("LABEL_REPAIRS", NumText(status.repairs) or 0)
     Add("LABEL_REFRESH", Format("UNIT_SECONDS", NumText(status.refreshSeconds) or 0))
     Add("LABEL_CVAR", CvarText(status.cvarInfo))
+    -- 采样策略：让玩家能看到「它没有在一直轮询」。
+    Add("LABEL_CADENCE", CadenceText(status))
+    if NumText(status.cachedLatency) then
+        Add("LABEL_CACHED_LATENCY", MsText(status.cachedLatency))
+    end
     -- "target / latency are a sample of the last computation" - with its age,
     -- so a bug report can tell a fresh value from a stale one.
     lines[#lines + 1] = SampledText(status)

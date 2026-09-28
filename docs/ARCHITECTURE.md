@@ -29,14 +29,31 @@
 ## 3. 设计原则：算法 > 设置
 
 **玩家只需要决定两件事**：插件开不开（`enabled`）、要不要看悬浮读数（`showStatus`）。
-其余一切——安全余量、写入阈值（迟滞）、延迟来源、窗口上下限、状态条字体——**都由插件自己决定**：
+其余一切——安全余量、写入阈值（迟滞）、延迟来源、窗口上下限、状态条字体、**多久检测一次**——**都由插件自己决定**：
 
 - 能量化的（延迟、抖动）→ `Latency` 模块按实测算；
-- 不能量化但可以定死的（上下限 50–400、刷新 15 秒）→ 内部常量；
+- 不能量化但可以定死的（上下限 50–400、心跳 300 秒）→ 内部常量；
 - 玩家可能确有异议的（某专精的基础值）→ **只留命令级逃生口** `/asq base <ms>`，不进面板。
 
 **新增任何配置键之前必须回答**：玩家凭什么比插件更懂这个数？回答不了就应该写成算法常量，
 并由 `tests/spec_core.lua` 的「配置白名单」用例拦住（多一个键就会 FAIL）。
+
+### 采样策略：只在"该学"的时候学
+
+固定节奏轮询是没必要的开销，也是数值抖动的来源。延迟在几分钟内不会跳变，而真正会改变答案的事件
+（登录、换区、**进副本 / 团本**、切专精、别的插件改值）客户端都会主动通知我们。所以：
+
+| 状态 | 何时进入 | 行为 |
+|---|---|---|
+| **settling**（学习期） | 登录 / 换区 / 进副本团本（`PLAYER_ENTERING_WORLD`、`ZONE_CHANGED_NEW_AREA`）、心跳发现漂移 | 每 `SETTLE_INTERVAL`(15s) 采样一次；平滑值不再移动（`IsConverged`）或达到 `MAX_SETTLE_SAMPLES`(8) 后结束 |
+| **pending**（有活没干完） | 战斗中待写入 / 待归还 | 每 `PENDING_INTERVAL`(15s) 重试（短暂状态） |
+| **error**（写失败） | 写入或归还失败 | 前 `RETRY_ATTEMPTS`(3) 次每 `RETRY_INTERVAL`(60s) 重试，之后退避到心跳 |
+| **fixed**（已固定） | 学习结束后 | 每 `HEARTBEAT_SECONDS`(300s) 只做一次**廉价漂移检查**：读数与平滑值之差超过 `DRIFT_DEADBAND`(25ms) 才重新学习；否则不决策、不写入 |
+
+心跳**不喂样本**（否则单个漂移样本会把 EMA 拽动半程并造成无谓写入）；它只负责判断"要不要重新学"。
+
+跨会话记忆：学习结束时把学到的延迟与抖动写入 `latencyCache`，下次登录**先用它**算出正确值，
+不等 `GetNetStats()`；第一笔实测与记忆值相差超过死区时**直接采用实测**（不慢慢滑几分钟）。
 
 ## 4. 取值公式（唯一出处）
 
@@ -64,11 +81,15 @@ hysteresis = clamp(5 + 1.0 × jitter, 5, 25)            -- 同上
 | `showStatus` | `true` | bool | 玩家（面板开关） |
 | `statusBarPos` | `nil` | `{x, y}` 有限数字 | 插件账本（拖动状态条产生） |
 | `baseOverride` | `nil` | 50–400 | 逃生口，**只能**由 `/asq base` 写入 |
+| `latencyCache` | `nil` | `{value 1–999, jitter, samples, at}` | 插件账本：上次学到的延迟，登录时先用它 |
 | `ownership` / `stats` | `nil` | 见 §6 | 插件账本（运行时） |
 
-内部常量（不在配置里）：`Core.REFRESH_SECONDS = 15`、`Core.WARMUP_DELAYS = {2,5,10,20,40}`、
+内部常量（不在配置里）：`Core.WARMUP_DELAYS = {2,5,10,20,40}`、
+`Core.SETTLE_INTERVAL = 15`、`Core.PENDING_INTERVAL = 15`、`Core.RETRY_INTERVAL = 60`、
+`Core.RETRY_ATTEMPTS = 3`、`Core.HEARTBEAT_SECONDS = 300`、`Core.MAX_SETTLE_SAMPLES = 8`、
 `Core.WINDOW_MIN = 50`、`Core.WINDOW_MAX = 400`、`Core.SCHEMA_VERSION = 2`，
-以及 `Latency.BASE_HEADROOM / JITTER_FACTOR / MARGIN_MIN / MARGIN_MAX / HYSTERESIS_* / SMOOTH_UP / SMOOTH_DOWN / WINDOW`。
+以及 `Latency.BASE_HEADROOM / JITTER_FACTOR / MARGIN_MIN / MARGIN_MAX / HYSTERESIS_* /
+SMOOTH_UP / SMOOTH_DOWN / WINDOW / MIN_SAMPLES / STABLE_EPSILON / DRIFT_DEADBAND`。
 
 **v1 → v2 迁移**：v1 的 12 个旋钮（`baseMode`/`manualBase`/`adaptive`/`latencySource`/`margin`/
 `minWindow`/`maxWindow`/`hysteresis`/`statusFont`/`statusFontSize`/`chatFeedback`/`showAdvanced`）
@@ -187,8 +208,10 @@ CVar.GetEnv() / CVar.SetEnv(env)         -- 测试注入点
 ### `ns.Core`
 
 ```lua
-Core.STATE.* / Core.DEFAULTS / Core.REASON_KEY / Core.SCHEMA_VERSION / Core.REFRESH_SECONDS
+Core.STATE.* / Core.DEFAULTS / Core.REASON_KEY / Core.SCHEMA_VERSION
 Core.WINDOW_MIN / Core.WINDOW_MAX        -- 内部安全边界（50 / 400），不是设置
+Core.SETTLE_INTERVAL / Core.PENDING_INTERVAL / Core.RETRY_INTERVAL /
+Core.RETRY_ATTEMPTS / Core.HEARTBEAT_SECONDS / Core.MAX_SETTLE_SAMPLES
 Core.L(key) / Core.Output(text) / Core.Now()
 Core.GetConfig()                  -- 校验后的配置表；改值请走 SetConfig
 Core.SetConfig(key, value, opts)  -- opts = { noRefresh = true }；未知键与 v1 退休键都返回 false
@@ -196,10 +219,13 @@ Core.EffectiveOptions()           -- 配置 + 算法实测值 + 内部常量 →
 Core.TrackLatency(snap)           -- 把快照里的延迟喂给 Latency（每次 Refresh 调用）
 Core.latency                      -- 跟踪器实例（测试可直接检查/清空）
 Core.SetBaseOverride(v|nil)       -- 逃生口：数字=固定基础值，"auto"/nil=跟随专精表
+Core.BeginSettle(reason)          -- 进入学习期（登录/换区/进副本/漂移）
+Core.SeedLatency() / Core.RememberLatency()   -- 跨会话记住并复用学到的延迟
+Core.DesiredInterval()            -- 当前状态该用多长的间隔；nil = 完全不用唤醒
 Core.SetEnabled(bool) / Core.IsEnabled()
 Core.ResetSettings()              -- 恢复默认，保留所有权与统计
 Core.Refresh(reason)              -- 重读状态、喂采样、执行决策，然后 SyncTicker；未进世界时什么都不做
-Core.SyncTicker()                 -- 定时器跟随「启用 或 仍持有所有权」（归还推迟/失败时不至于停摆）
+Core.SyncTicker()                 -- 定时器跟随状态：学习 / 有待办 / 已固定（心跳）
 Core.RestoreOwnership(reason)     -- 归还玩家原值；返回 ok, reason
 Core.GetLiveValue()               -- 实时读 CVar（不缓存）
 Core.Snapshot()                   -- 最近一次读取的游戏状态
@@ -220,10 +246,12 @@ Core.Init()                       -- 创建事件帧（加载时已自动调用�
   inCombat, inWorld, context, role, base, latency, home, world,
   specID, specName, classFile, cvarInfo,
   lastError, lastErrorAt, applyCount, repairs, externalChange,
-  schemaFuture, importedFrom, refreshSeconds, reason,
+  schemaFuture, importedFrom, reason,
   baseOverride,   -- 逃生口当前值（nil = 跟随专精表）
-  margin, hysteresis, jitter, smoothed, samples, stable }   -- 算法自述，供 /asq status
-```
+  margin, hysteresis, jitter, smoothed, samples, stable,   -- 算法自述
+  cadence,        -- "settling" | "pending" | "fixed"（采样策略，供 /asq status）
+  settleReason, settleSamples, intervalSeconds, heartbeatSeconds, converged,
+  cachedLatency, cachedLatencyAt }   -- 跨会话记住的延迟
 
 ### 事件
 

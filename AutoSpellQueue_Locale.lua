@@ -200,10 +200,32 @@ local STRINGS = {
         "偵測到來自更新版本的設定資料，已原樣保留，沒有改寫。",
         "Settings written by a newer version were found and are kept exactly as they are.",
     },
-    ["HINT_SAMPLED"] = {
-        "目标值 / 延迟 / 余量 / 场景 / 专精 = 上一次计算的采样（每 %d 秒刷新一次）；当前值是实时读取。余量按实测抖动自动决定，分数越高插件越保守。",
-        "目標值 / 延遲 / 餘量 / 場景 / 專精 = 上一次計算的取樣（每 %d 秒重新整理一次）；目前值是即時讀取。餘量依實測抖動自動決定，分數越高插件越保守。",
-        "Target / latency / headroom / context / spec are the sample of the last computation (every %d s); the current value is read live. Headroom is derived from measured jitter - the more jitter, the more conservative the addon gets.",
+    ["HINT_SAMPLED_SETTLING"] = {
+        "目标值 / 延迟 / 余量 / 场景 / 专精 = 上一次计算的采样；当前值是实时读取。刚换过场景，正在重新采样，稳定后就停止检测。",
+        "目標值 / 延遲 / 餘量 / 場景 / 專精 = 上一次計算的取樣；目前值是即時讀取。剛換過場景，正在重新取樣，穩定後就停止偵測。",
+        "Target / latency / headroom / context / spec are the sample of the last computation; the current value is read live. Context just changed, so it is sampling again - and stops once the reading settles.",
+    },
+    ["HINT_SAMPLED_FIXED"] = {
+        "目标值 / 延迟 / 余量 / 场景 / 专精 = 上一次计算的采样；当前值是实时读取。延迟已稳定，不再频繁检测，只在换区 / 进副本或延迟明显变化时重测。",
+        "目標值 / 延遲 / 餘量 / 場景 / 專精 = 上一次計算的取樣；目前值是即時讀取。延遲已穩定，不再頻繁偵測，只在換區 / 進副本或延遲明顯變化時重測。",
+        "Target / latency / headroom / context / spec are the sample of the last computation; the current value is read live. Latency has settled, so it stops probing and only re-checks on a zone or instance change, or when latency really moves.",
+    },
+    ["LABEL_CADENCE"] = { "采样策略", "取樣策略", "Sampling" },
+    ["LABEL_CACHED_LATENCY"] = { "记住的延迟", "記住的延遲", "Remembered latency" },
+    ["CADENCE_SETTLING"] = {
+        "正在采样（第 %d 次）",
+        "正在取樣（第 %d 次）",
+        "Sampling (pass %d)",
+    },
+    ["CADENCE_PENDING"] = {
+        "有写入待完成，每 %d 秒重试",
+        "有寫入待完成，每 %d 秒重試",
+        "A write is still owed; retrying every %d s",
+    },
+    ["CADENCE_FIXED"] = {
+        "已固定：每 %d 秒只做一次漂移检查",
+        "已固定：每 %d 秒只做一次漂移檢查",
+        "Settled: one drift check every %d s",
     },
     ["HINT_SNAPSHOT_AGE"] = {
         "上次计算在 %d 秒前。",
