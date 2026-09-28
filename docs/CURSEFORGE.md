@@ -62,10 +62,10 @@
 
 | # | 素材 | 规格 | 数量 | 状态 | 备注 |
 |---|---|---|---|---|---|
-| 1 | Logo / 项目头像 | 512×512 PNG | 1 | 待制作 | 建议用 `.toc` 的 `IconTexture` 图标做底 + 插件名；深底 + 主色 `#0cd29f`（与标题/聊天前缀一致） |
-| 2 | 截图 | ≥ 1280×720（建议 1920×1080） | ≥ 3 | 待制作 | 建议：① 主区域状态卡（当前/目标/延迟/场景/算式）② 高级区 ③ 悬浮状态条 + tooltip ④ 战斗中 `pending` ⑤ `/asq status` 输出。截图里不要出现他人角色名 |
-| 3 | 简介 Summary | 单段 | en + zhCN | ✅ [`DESCRIPTION.md`](DESCRIPTION.md) 末节「商店页短简介」 | 第一句必须说清「只改本地 CVar、不自动施法」 |
-| 4 | 详细描述 | Markdown/HTML | en + zhCN | ✅ [`DESCRIPTION.md`](DESCRIPTION.md)（中英各自独立成篇） | 必查清单见下 |
+| 1 | Logo / 项目头像 | 512×512 PNG | 1 | ✅ `docs/media/logo-512.png`（母版 `logo-master-1024.png`） | 原创绘制：深底圆角方 + 悬浮读数条造型（白字 220 ms）+ 底部延迟波形（常态灰白、一处红尖峰）；配色即插件实际配色（白=正常/红=偏高）。**不用暴雪图标做底**（版权），也不再用已废除的品牌绿 |
+| 2 | 截图 | ≥ 1280×720 | 6 | ✅ `docs/media/`（英文 + 简中各三张） | 每语言三张：① 设置面板 ② 野外悬浮读数条 ③ 悬停提示（含算式）。英文为主（`shot-en-*`）、简中对照（`shot-zhcn-*`）。拍摄方式：探针版强制 enUS 后实机截取，像素差分验证过语言确实切换、且事后已还原（差异 0.0%）。**上传前请肉眼过一遍**：确认无他人角色名、构图满意（自动验证覆盖不了这两点） |
+| 3 | 简介 Summary | 单段 | en + zhCN + zhTW | ✅ [`DESCRIPTION.md`](DESCRIPTION.md) 末节「商店页短简介」 | 第一句必须说清「只改本地 CVar、不自动施法」 |
+| 4 | 详细描述 | Markdown/HTML | en + zhCN + zhTW | ✅ [`DESCRIPTION.md`](DESCRIPTION.md)（三语各自独立成篇） | 必查清单见下 |
 | 5 | 分类 | WoW 类目 | 1 | 建议 **Combat** | 与 `.toc` 的 `## Category` 必须一致 |
 | 6 | 标签 | 3–6 个 | — | 建议 `spell queue`、`latency`、`cvar`、`quality of life`（中文加 `施法队列`） | **不要**用 `automation` / `bot` / `macro` / `script` 这类会被误判的词 |
 | 7 | 游戏版本 | 平台勾选 | — | Retail 12.x（对齐 `.toc` 的 Interface 列表） | 每次补丁后更新，见 §7.4 |
