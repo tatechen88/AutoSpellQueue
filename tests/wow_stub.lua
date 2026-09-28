@@ -195,8 +195,16 @@ local function newRegion(kind)
             x = tonumber(x) or 0,
             y = tonumber(y) or 0,
         }
+        -- Count the anchors: "how many points does this region have" decides
+        -- whether its width comes from the anchors or from SetWidth, and that
+        -- distinction has already caused two live-client layout bugs.
+        self.__pointCount = (self.__pointCount or 0) + 1
     end
-    function region:ClearAllPoints() self.__point = nil end
+    function region:ClearAllPoints()
+        self.__point = nil
+        self.__pointCount = 0
+    end
+    function region:GetNumPoints() return self.__pointCount or 0 end
     function region:GetPoint()
         local p = self.__point
         if not p then return nil end
@@ -221,6 +229,12 @@ local function newRegion(kind)
         if self.__allPoints and self.parent and self.parent.GetHeight then
             return self.parent:GetHeight()
         end
+        -- A FontString with no explicit height follows its text, and its text
+        -- height depends on how many lines it wraps to *at its current width*.
+        -- Without this the stub reported one line for a string that wraps, so
+        -- "measure the height before setting the width" (which pushes the next
+        -- row up into the wrapped line) was invisible to the suite.
+        if self.__kind == "FontString" then return self:GetStringHeight() end
         return self.__h or 0
     end
     function region:GetSize() return self:GetWidth(), self:GetHeight() end
@@ -290,9 +304,23 @@ local function newRegion(kind)
         local text = type(self.text) == "string" and self.text or ""
         return #text * 7
     end
-    function region:GetStringHeight() return 14 end
-    function region:SetWordWrap() end
-    function region:SetNonSpaceWrap() end
+    --- How many lines the current text occupies at the region's current width.
+    --  This is what makes "measure the height" honest: a wrapping string that is
+    --  still widthless reports one line, and the live client reported two, so the
+    --  next row ended up drawn on top of the wrapped line.
+    local function WrappedLines(self)
+        local text = type(self.text) == "string" and self.text or ""
+        if text == "" then return 0 end
+        local width = self.__w or 0
+        if width <= 0 then return 1 end
+        return math.max(1, math.ceil((#text * 7) / width))
+    end
+    function region:GetStringHeight() return WrappedLines(self) * 14 end
+    -- Wrapping flags are recorded (not ignored): "does this string wrap?" is a
+    -- real client-side precondition for CJK text, which has no spaces to break
+    -- at, and it has already caused a truncated-in-game bug.
+    function region:SetWordWrap(flag) self.wordWrap = flag and true or false end
+    function region:SetNonSpaceWrap(flag) self.nonSpaceWrap = flag and true or false end
     function region:SetFont(font) self.font = font end
     function region:GetFont() return self.font end
     function region:SetFontObject(font) self.fontObject = font end

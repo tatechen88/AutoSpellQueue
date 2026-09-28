@@ -298,6 +298,106 @@ T.test("面板必须极简：只有两个开关，没有任何旋钮（守门用
     T.truthy(#RowsWithLabel("PANEL_FOOTER") >= 1, "面板必须有一行说明「无需设置」的脚注")
 end)
 
+T.test("修复: 滚动子框必须显式设宽（宽度为 0 会让整页空白，客户端实测过）", function()
+    Boot()
+    local scroll = Stub.FindFrame("AutoSpellQueueOptionsScroll")
+    T.notNil(scroll, "应有滚动框")
+    local content = scroll.__scrollChild
+    T.notNil(content, "滚动框必须有内容子框")
+
+    -- 真机实测（2026-09-28）：PANEL 665x604 / SCROLL 639x602 / CHILD 0x440。
+    -- 客户端不会从锚点推导 ScrollFrame 子框的宽度，而没有宽度时，所有以
+    -- 左+右双锚点挂上去的控件都会渲染成「什么都没有」——就是那次整页空白。
+    local width = content:GetWidth()
+    T.truthy(type(width) == "number" and width > 0,
+        "滚动子框必须显式设宽（实得 " .. tostring(width) .. "）")
+
+    -- 宿主尺寸变化时必须跟着改，否则窗口拉大后内容会被截断
+    scroll:SetWidth(600)
+    if scroll.__scripts and scroll.__scripts.OnSizeChanged then
+        scroll.__scripts.OnSizeChanged(scroll, 600)
+    end
+    T.truthy(content:GetWidth() > 0, "OnSizeChanged 之后宽度仍必须为正")
+    T.truthy(content:GetWidth() < 600, "内容宽度应小于滚动框（要留出内边距）")
+end)
+
+T.test("修复: 卡片里的多行文字必须留有整行间距（折行不许压到一起）", function()
+    Boot()
+    local card = Badge() and Badge().parent
+    T.notNil(card, "状态卡应存在")
+
+    -- 按 y 收集卡片里的所有文字行（结构判定，不靠文案）
+    local lines = {}
+    for _, widget in ipairs(Stub.Widgets()) do
+        if widget.parent == card and widget.__kind == "FontString" then
+            local point, _, _, _, y = widget:GetPoint()
+            if point == "TOPLEFT" and type(y) == "number" then
+                lines[#lines + 1] = { widget = widget, y = y }
+            end
+        end
+    end
+    table.sort(lines, function(a, b) return a.y > b.y end) -- 从上到下
+    T.truthy(#lines >= 3, "卡片应有公式行、采样行与状态提示行（实得 " .. #lines .. "）")
+
+    local last = lines[#lines]
+    local secondLast = lines[#lines - 1]
+
+    -- 中文没有空格：只开 SetWordWrap 客户端无处断行，会直接截断成「…」。
+    for _, entry in ipairs({ secondLast, last }) do
+        T.truthy(entry.widget.wordWrap == true,
+            "卡片文字行必须开启换行（y=" .. tostring(entry.y) .. "）")
+        T.truthy(entry.widget.nonSpaceWrap == true,
+            "中文长句还需要 SetNonSpaceWrap 才能在无空格处断行（y=" .. tostring(entry.y) .. "）")
+    end
+
+    -- 倒数第二行（采样说明）可能折成两行（约 2×14px），间距必须容得下。
+    -- 真机出现过 sampledLine -128 / hintLine -146 → 两行叠在一起。
+    T.truthy(secondLast.y - last.y >= 28,
+        "最后两行之间要留两行高度（实得 " .. tostring(secondLast.y - last.y) .. "）")
+
+    T.truthy(card:GetHeight() >= 200, "卡片高度要容得下折行后的内容")
+end)
+
+T.test("修复: 会换行的字体串必须有显式宽度（靠双锚点会被客户端截断成「…」）", function()
+    Boot()
+    -- 真机实测：副标题与脚注用 TOPLEFT+TOPRIGHT 取宽，中文长句被截成
+    -- 「…不需…」；而显式 SetWidth 的采样行正常折行。规律是「换行必须显式定宽」。
+    local function FindByText(key)
+        local text = Core.L(key)
+        for _, widget in ipairs(Stub.Widgets()) do
+            if widget.__kind == "FontString" and widget.text == text then return widget end
+        end
+        return nil
+    end
+
+    for _, key in ipairs({ "PANEL_SUBTITLE", "PANEL_FOOTER", "SETTING_ENABLED_HINT" }) do
+        local widget = FindByText(key)
+        T.notNil(widget, "找不到要检查的文本: " .. key)
+        T.truthy(widget.wordWrap == true, key .. " 必须开启换行")
+        T.truthy(widget.nonSpaceWrap == true, key .. " 必须允许无空格断行（中文）")
+        local width = widget:GetWidth()
+        T.truthy(type(width) == "number" and width > 0,
+            key .. " 必须有显式宽度（实得 " .. tostring(width) .. "）")
+        T.eq(widget:GetNumPoints(), 1,
+            key .. " 不应再靠左右双锚点取宽（那正是被截断的原因）")
+    end
+
+    -- 宽度必须在「测量高度之前」就位，否则换行后的行距会被算少，下一行会压上来。
+    -- 判定方式：副标题折行后的高度必须真的被算进间距里（开关行要落在它下方）。
+    local subtitle = FindByText("PANEL_SUBTITLE")
+    local height = subtitle:GetHeight()
+    T.truthy(height > 16, "副标题已折行，GetHeight 必须反映多行（实得 " .. tostring(height) .. "）")
+
+    -- 行与副标题都直接挂在 content 上，坐标系一致（标签是行的子级，不能直接比）。
+    local toggleRow = RowOf("SETTING_ENABLED")
+    T.notNil(toggleRow, "应有总开关行")
+    local _, _, _, _, subtitleY = subtitle:GetPoint()
+    local _, _, _, _, rowY = toggleRow:GetPoint()
+    T.truthy(rowY <= subtitleY - height,
+        "开关行必须落在副标题下方（副标题 y=" .. tostring(subtitleY) ..
+        " h=" .. tostring(height) .. "，行 y=" .. tostring(rowY) .. "）")
+end)
+
 T.test("UI 只构建一次：重复 Build / Refresh 不再新建控件", function()    Boot()
     local count = #Stub.Widgets()
     Options.Build()

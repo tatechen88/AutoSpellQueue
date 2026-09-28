@@ -132,9 +132,9 @@ local STRINGS = {
         "AutoSpellQueue",
     },
     ["PANEL_SUBTITLE"] = {
-        "按职业 / 专精、网络延迟与抖动自动维护 SpellQueueWindow（施法队列窗口）——**不需要任何设置**。它只改这一个客户端设置，不会替你施放技能。",
-        "依職業 / 專精、網路延遲與抖動自動維護 SpellQueueWindow（施法佇列視窗）——**不需要任何設定**。它只改這一個用戶端設定，不會替你施放技能。",
-        "Keeps SpellQueueWindow (the spell queue window) tuned to your class, spec, latency and jitter - **there is nothing to configure**. It only changes this one client setting and never casts for you.",
+        "按职业 / 专精、网络延迟与抖动自动维护 SpellQueueWindow（施法队列窗口）——不需要任何设置。它只改这一个客户端设置，不会替你施放技能。",
+        "依職業 / 專精、網路延遲與抖動自動維護 SpellQueueWindow（施法佇列視窗）——不需要任何設定。它只改這一個用戶端設定，不會替你施放技能。",
+        "Keeps SpellQueueWindow (the spell queue window) tuned to your class, spec, latency and jitter - there is nothing to configure. It only changes this one client setting and never casts for you.",
     },
     ["PANEL_FOOTER"] = {
         "余量与写入阈值由插件按实测抖动自动决定，所以这里没有可调项。诊断：/asq status　·　给某个专精手动指定基础值：/asq base 180（恢复自动：/asq base auto）。",

@@ -12,3 +12,7 @@ tools/node_modules/
 .idea/
 Thumbs.db
 desktop.ini
+
+# 调试用的临时截图/脚本（Cua Driver 真机排查产物）：保留占位文件，忽略产物
+.scratch/*
+!.scratch/.gitkeep

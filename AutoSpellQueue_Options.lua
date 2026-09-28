@@ -250,6 +250,17 @@ local function NewText(parent, fontObject)
     return parent:CreateFontString(nil, "OVERLAY", fontObject or "GameFontNormal")
 end
 
+--- Turns on wrapping that also works for Chinese/Japanese text.
+--  `SetWordWrap(true)` alone only breaks at spaces, so a long Chinese sentence
+--  has nowhere to break and the client truncates it with an ellipsis (seen
+--  in-game: the panel subtitle ended in "**不..."). SetNonSpaceWrap lets the
+--  client break inside space-less runs, which is what CJK needs.
+local function EnableWrap(fontString)
+    fontString:SetWordWrap(true)
+    fontString:SetNonSpaceWrap(true)
+    return fontString
+end
+
 --- Tooltip helper. Title/body may be strings or functions (for live text).
 local function AttachTooltip(frame, title, body)
     frame:HookScript("OnEnter", function(self)
@@ -395,7 +406,7 @@ local function AddRowHint(row, key)
     hint:SetPoint("TOPLEFT", 12, -25)
     hint:SetWidth(INNER_WIDTH - 40)
     hint:SetJustifyH("LEFT")
-    hint:SetWordWrap(true)
+    EnableWrap(hint)
     hint:SetTextColor(1, 1, 1, 0.45)
     hint:SetText(L(key))
     return hint
@@ -663,9 +674,18 @@ local function BuildUI(contentParent)
 
     local content = CreateFrame("Frame", nil, scroll)
     content:SetPoint("TOPLEFT", scroll, "TOPLEFT", PANEL_PAD, -PANEL_PAD)
-    content:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", -PANEL_PAD, -PANEL_PAD)
+    -- A scroll child MUST carry an explicit width. The client does not derive it
+    -- from anchors inside a ScrollFrame, and every widget here is anchored
+    -- left+right to the content, so a zero-width child renders as *nothing at
+    -- all* - that is exactly what left the settings page blank in-game
+    -- (measured: SCROLL 639x602 but CHILD 0x440). Verified against GearInsight,
+    -- which sets the width explicitly and re-applies it from OnSizeChanged.
+    content:SetWidth(math.max(240, (scroll:GetWidth() or 0) - 2 * PANEL_PAD))
     content:SetHeight(10)
     scroll:SetScrollChild(content)
+    scroll:SetScript("OnSizeChanged", function(_, width)
+        content:SetWidth(math.max(240, (width or 0) - 2 * PANEL_PAD))
+    end)
 
     -- Throttled refresh ticker for the panel. It is a child of the panel on
     -- purpose: the client does not call OnUpdate on a frame whose parent is
@@ -683,6 +703,34 @@ local function BuildUI(contentParent)
 
     local y = 0
 
+    -- Wrapping strings need an EXPLICIT width. A FontString that derives its
+    -- width from left+right anchors does not re-flow in the client: it gets
+    -- ellipsized mid-sentence ("...不需…" was measured in-game). So every
+    -- wrapping string is registered here and given a width whenever the content
+    -- frame is (re)sized.
+    local wrappers = {}
+    --- Registers a wrapping string and sets its width immediately.
+    --  The width must be in place *before* the caller measures GetStringHeight:
+    --  measuring a still-widthless string reports one line, so the next row is
+    --  placed too high and the wrapped second line is drawn over it (seen
+    --  in-game: the panel subtitle overlapped the master-switch row).
+    local function WrapToWidth(fontString, inset)
+        inset = inset or 0
+        EnableWrap(fontString)
+        wrappers[#wrappers + 1] = { fs = fontString, inset = inset }
+        local width = content:GetWidth() or 0
+        if width <= 0 then width = math.max(240, PANEL_WIDTH - 2 * PANEL_PAD) end
+        fontString:SetWidth(math.max(120, width - inset))
+        return fontString
+    end
+    local function ApplyWrapWidths()
+        local width = content:GetWidth() or 0
+        if width <= 0 then return end
+        for _, entry in ipairs(wrappers) do
+            entry.fs:SetWidth(math.max(120, width - entry.inset))
+        end
+    end
+
     -- Header ---------------------------------------------------------------
     local title = NewText(content, "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
@@ -692,9 +740,8 @@ local function BuildUI(contentParent)
 
     local subtitle = NewText(content, "GameFontNormalSmall")
     subtitle:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
-    subtitle:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
     subtitle:SetJustifyH("LEFT")
-    subtitle:SetWordWrap(true)
+    WrapToWidth(subtitle)
     subtitle:SetTextColor(1, 1, 1, 0.55)
     subtitle:SetText(L("PANEL_SUBTITLE"))
     y = y - math.max(16, subtitle:GetStringHeight() or 16) - 10
@@ -708,7 +755,9 @@ local function BuildUI(contentParent)
     y = y - 8
 
     -- Status card ----------------------------------------------------------
-    local cardHeight = 208
+    -- Tall enough for the field rows plus two wrapped lines each for the formula,
+    -- the sample note and the state hint.
+    local cardHeight = 224
     local card = CreateFrame("Frame", nil, content)
     card:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
     card:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
@@ -779,18 +828,21 @@ local function BuildUI(contentParent)
     formulaLine:SetTextColor(1, 1, 1, 0.70)
     formulaLine:SetText(L("FORMULA_UNKNOWN"))
 
+    -- Fixed line slots, each sized for up to two wrapped lines. They used to be
+    -- 18 px apart, which was fine while every string was short; the moment one
+    -- wrapped (measured in-game) the two lines were drawn on top of each other.
     local sampledLine = NewText(card, "GameFontNormalSmall")
-    sampledLine:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -128)
+    sampledLine:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -130)
     sampledLine:SetWidth(INNER_WIDTH - 28)
     sampledLine:SetJustifyH("LEFT")
-    sampledLine:SetWordWrap(true)
+    EnableWrap(sampledLine)
     sampledLine:SetTextColor(1, 1, 1, 0.40)
 
     local hintLine = NewText(card, "GameFontNormalSmall")
-    hintLine:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -146)
+    hintLine:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -166)
     hintLine:SetWidth(INNER_WIDTH - 28)
     hintLine:SetJustifyH("LEFT")
-    hintLine:SetWordWrap(true)
+    EnableWrap(hintLine)
     hintLine:SetTextColor(1, 1, 1, 0.75)
     hintLine:SetText(L("HINT_IDLE"))
 
@@ -911,16 +963,22 @@ local function BuildUI(contentParent)
 
     local footer = NewText(content, "GameFontNormalSmall")
     footer:SetPoint("TOPLEFT", content, "TOPLEFT", 2, y - 6)
-    footer:SetPoint("TOPRIGHT", content, "TOPRIGHT", -2, y - 6)
     footer:SetJustifyH("LEFT")
-    footer:SetWordWrap(true)
+    WrapToWidth(footer, 4)
     footer:SetTextColor(1, 1, 1, 0.40)
     footer:SetText(L("PANEL_FOOTER"))
     y = y - 6 - math.max(16, footer:GetStringHeight() or 16) - 8
 
+    ApplyWrapWidths()
     SetContentHeight(content, -y + 6)
     built = true
     RefreshUI()
+
+    -- Keep the wrapping strings in step with the viewport: the canvas sizes our
+    -- frame only after it is shown, and the player can resize the window.
+    scroll:HookScript("OnSizeChanged", function(_, width)
+        if (width or 0) > 0 then ApplyWrapWidths() end
+    end)
 end
 
 -------------------------------------------------------------------------------
