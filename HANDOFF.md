@@ -86,6 +86,16 @@ pwsh tools/verify.ps1 -Package   # 追加 dist/AutoSpellQueue-<version>.zip
 那次的输出 `PANEL 665 604 2 true` / `SCROLL 639x602` / **`CHILD 0x440`** 一次锁定了根因（整页空白 = 滚动子框宽度 0）。
 **悬停提示无法这样验证**（合成光标不触发 OnEnter），只能由人眼看。
 
+> **注入长命令会被截断（2026-09-28 实测，两次踩到）**：`type_text` 是逐字符 PostMessage。
+> 18 字符的 `/run print("PING")` 正常；308 字符的命令到客户端只剩前半截 →
+> `arguments expected near '<eof>'`；430 字符那条 → `'then' expected near '='`（同一条文本本地
+> `luaparse` 解析是通过的，所以**本地查语法查不出截断，长度才是真正的约束**）。
+> 两次都在玩家屏幕上留了 Blizzard 的 Lua 错误框，需要手动关掉。
+> **规矩**：注入的 `/run` 命令保持短（<100 字符）；更长的探针写成临时插件的一条 `/命令` 再调用。
+>
+> **一眼判断错误框是不是本插件造成的**：看 Stack。若里面只有 `Interface/AddOns/Blizzard_*`、
+> 没有任何 `Interface/AddOns/AutoSpellQueue/`，那就是探针/其它插件的问题，与本插件无关。
+
 ## 必须保持的不变量
 
 写入必须读回校验、所有权只在仍是自己的值时归还、战斗中不写也不重放旧目标、登出归还、未来 schema 不降级、
