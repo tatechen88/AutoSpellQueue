@@ -737,46 +737,119 @@ T.test("统一配色：没有任何表面再用旧的品牌绿（提示标题也
         T.truthy(pr > 0.8 and pg < 0.6, "发布的调色板在偏高时必须是红")
     end)
 end)
-T.test("状态条提示框必须让开鼠标：下方留间隙；下方放不下才翻到上方（都在屏幕内）", function()
+T.test("提示框摆位（纯函数）：屏幕四角 + 中央都必须完整落屏且不压读数条", function()
+    local screen = { width = 2560, height = 1440 }
+    local tip = { width = 420, height = 230 }
+    local gap = 8
+    local barW, barH = 84, 24
+
+    local function Solve(x, y, point, relPoint)
+        local owner = { left = x, right = x + barW, bottom = y, top = y + barH }
+        local candidate, rect, fits = Options.PickTooltipAnchor(screen, owner, tip, gap)
+        return candidate, rect, fits, owner
+    end
+
+    local function AssertFitsAndClears(label, candidate, rect, fits, owner)
+        T.truthy(fits, label .. "：应存在一个完整落屏且有间隙的方案（实得 " .. tostring(candidate.key) .. "）")
+        T.truthy(rect.left >= 0 and rect.right <= screen.width,
+            label .. "：水平方向必须完整在屏内（left=" .. rect.left .. " right=" .. rect.right .. "）")
+        T.truthy(rect.bottom >= 0 and rect.top <= screen.height,
+            label .. "：垂直方向必须完整在屏内（bottom=" .. rect.bottom .. " top=" .. rect.top .. "）")
+        local overlaps = rect.left < owner.right and rect.right > owner.left
+            and rect.bottom < owner.top and rect.top > owner.bottom
+        T.falsy(overlaps, label .. "：绝不能压在读数条上（会挡住光标）")
+        T.truthy(rect.bottom >= owner.top + gap - 0.001 or rect.top <= owner.bottom - gap + 0.001,
+            label .. "：上下方向必须留出 " .. gap .. "px 间隙")
+    end
+
+    -- 四个角（读数条贴着屏幕边缘）+ 中央 + 底边
+    local cases = {
+        { label = "左上角", x = 0, y = screen.height - barH, point = "TOPLEFT" },
+        { label = "右上角", x = screen.width - barW, y = screen.height - barH, point = "TOPRIGHT" },
+        { label = "左下角", x = 0, y = 0, point = "BOTTOMLEFT" },
+        { label = "右下角", x = screen.width - barW, y = 0, point = "BOTTOMRIGHT" },
+        { label = "正中", x = screen.width / 2, y = screen.height / 2, point = "CENTER" },
+        { label = "底边中间", x = screen.width / 2, y = 0, point = "BOTTOM" },
+        { label = "默认位（小地图下）", x = screen.width - 300, y = screen.height - 260, point = "TOP" },
+    }
+    for _, case in ipairs(cases) do
+        local candidate, rect, fits, owner = Solve(case.x, case.y, case.point, case.point)
+        AssertFitsAndClears(case.label, candidate, rect, fits, owner)
+    end
+end)
+
+T.test("提示框摆位：屏幕左右边缘时自动换对齐方向；底部时改挂上方", function()
+    local screen = { width = 2560, height = 1440 }
+    local tip = { width = 420, height = 230 }
+    local barW, barH = 84, 24
+
+    -- 右上角：左对齐会超出右边缘 → 必须改成右对齐（挂在读数条左下方）
+    local owner = { left = screen.width - barW, right = screen.width,
+        bottom = screen.height - barH, top = screen.height }
+    local candidate = Options.PickTooltipAnchor(screen, owner, tip, 8)
+    T.eq(candidate.below, true, "读数条在屏幕上方时应挂在下方")
+    T.eq(candidate.point, "TOPRIGHT", "左对齐会出屏 → 必须换成右对齐")
+
+    -- 左下角：下方放不下 → 必须改挂上方
+    local ownerLow = { left = 0, right = barW, bottom = 0, top = barH }
+    local candidateLow = Options.PickTooltipAnchor(screen, ownerLow, tip, 8)
+    T.eq(candidateLow.below, false, "读数条贴屏幕底部时应改挂上方")
+    T.eq(candidateLow.point, "BOTTOMLEFT", "左边缘保持左对齐")
+end)
+
+T.test("提示框摆位：极小屏幕也要给出方向（不压读数条），而不是随便贴上去", function()
+    -- 提示框比可用空间还大：没有任何候选能完整落屏，此时必须选「空间更大」的一侧，
+    -- 仍然不能压住读数条（离光标最近的那一侧要被排除）
+    local screen = { width = 800, height = 600 }
+    local tip = { width = 700, height = 500 }
+    local ownerTop = { left = 350, right = 434, bottom = 500, top = 524 }
+    local candidate, _, fits = Options.PickTooltipAnchor(screen, ownerTop, tip, 8)
+    T.falsy(fits, "前置：这种尺寸下确实没有候选能完整落屏")
+    T.eq(candidate.below, true, "读数条靠上、下方空间更大 → 选下方")
+
+    local ownerBottom = { left = 350, right = 434, bottom = 20, top = 44 }
+    local candidate2 = Options.PickTooltipAnchor(screen, ownerBottom, tip, 8)
+    T.eq(candidate2.below, false, "读数条靠下、上方空间更大 → 选上方")
+end)
+
+T.test("状态条提示框：真机路径下四个角都必须完整落屏且不压读数条", function()
     Boot()
     local bar = StatusBar()
     bar:Show()
     local tip = _G.GameTooltip
-    tip.__height = 220
+    tip.__width, tip.__height = 420, 230
 
-    local function ShowAt(topOffset)
-        -- 把读数条放到指定高度（UIParent TOPLEFT 为原点，向上为负）
+    local screenW, screenH = _G.UIParent:GetWidth(), _G.UIParent:GetHeight()
+    local barW, barH = bar:GetWidth(), bar:GetHeight()
+
+    local positions = {
+        { "左上角", "TOPLEFT", 0, -(screenH - barH) },
+        { "右上角", "TOPRIGHT", 0, -(screenH - barH) },
+        { "左下角", "BOTTOMLEFT", 0, 0 },
+        { "右下角", "BOTTOMRIGHT", 0, 0 },
+        { "中央", "CENTER", 0, 0 },
+        { "默认位", "TOPLEFT", 2350, -200 },
+    }
+    for _, case in ipairs(positions) do
         bar:ClearAllPoints()
-        bar:SetPoint("TOPLEFT", _G.UIParent, "TOPLEFT", 900, topOffset)
+        bar:SetPoint(case[2], _G.UIParent, case[2], case[3], case[4])
         tip:ClearLines()
         bar.__scripts.OnEnter(bar)
-        local point, relTo, relPoint, x, y = tip:GetPoint()
-        return point, relTo, relPoint, x, y
+
+        local tL, tR = tip:GetLeft(), tip:GetRight()
+        local tB, tT = tip:GetBottom(), tip:GetTop()
+        T.truthy(tL ~= nil and tT ~= nil, case[1] .. "：提示框应有几何")
+        T.truthy(tL >= -0.001 and tR <= screenW + 0.001,
+            case[1] .. "：水平必须完整在屏内（" .. tostring(tL) .. ".." .. tostring(tR) .. "）")
+        T.truthy(tB >= -0.001 and tT <= screenH + 0.001,
+            case[1] .. "：垂直必须完整在屏内（" .. tostring(tB) .. ".." .. tostring(tT) .. "）")
+
+        local oL, oR = bar:GetLeft(), bar:GetRight()
+        local oB, oT = bar:GetBottom(), bar:GetTop()
+        local overlaps = tL < oR and tR > oL and tB < oT and tT > oB
+        T.falsy(overlaps, case[1] .. "：绝不能压在读数条上（会挡住光标）")
     end
-
-    -- 场景 1：读数条在屏幕上方（默认位置）→ 提示框挂下方，留 8px 间隙
-    local point, _, relPoint, x, y = ShowAt(-200)
-    T.eq(tip.anchor, "ANCHOR_NONE", "必须由插件自己定位（不让客户端贴在读数条上）")
-    T.eq(point, "TOPLEFT", "应挂在读数条下方")
-    T.eq(relPoint, "BOTTOMLEFT", "相对点应是读数条的左下角")
-    T.eq(x, 0, "水平不偏移")
-    T.truthy(y < 0, "必须有向下的间隙（实得 " .. tostring(y) .. "）")
-    T.truthy(tip.clamped, "必须保持夹紧在屏幕内")
-
-    -- 间隙要够：提示框顶边不能压到读数条（读数条高 24，y 绝对值要 > 0）
-    T.truthy(math.abs(y) >= 4, "间隙太小，光标仍会被挡（实得 " .. tostring(y) .. "）")
-
-    -- 场景 2：读数条拖到屏幕底部（下方放不下 220px 的提示框）→ 翻到上方
-    bar:ClearAllPoints()
-    bar:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", 900, 10)
-    tip:ClearLines()
-    bar.__scripts.OnEnter(bar)
-    local point2, _, relPoint2, _, y2 = tip:GetPoint()
-    T.eq(point2, "BOTTOMLEFT", "下方放不下时应翻到上方")
-    T.eq(relPoint2, "TOPLEFT", "相对点是读数条的左上角")
-    T.truthy(y2 > 0, "上翻时同样要有间隙（实得 " .. tostring(y2) .. "）")
 end)
-
 T.test("拖动状态条时提示框必须立刻消失（别挡着玩家操作）", function()
     Boot()
     local bar = StatusBar()

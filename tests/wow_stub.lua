@@ -661,9 +661,84 @@ function _G.GameTooltip:GetPoint()
     return p.point, p.relTo, p.relPoint, p.x, p.y
 end
 function _G.GameTooltip:SetClampedToScreen(clamped) self.clamped = clamped and true or false end
---- Tooltip height used by placement tests; the client computes it from the lines.
+--- Tooltip size. The client only sizes the box once it is shown, so a height read
+--- BEFORE Show() is 0 - and believing that 0 made the placement logic think "it
+--- fits below" for a readout at the bottom of the screen, after which clamping
+--- pushed the box up over the readout and hid the cursor under it. Model it.
+_G.GameTooltip.__width = 400
 _G.GameTooltip.__height = 220
-function _G.GameTooltip:GetHeight() return self.__height end
+function _G.GameTooltip:GetWidth() return self.__width end
+function _G.GameTooltip:GetHeight() return self.shown and self.__height or 0 end
+
+--- Real geometry for the tooltip, derived from its anchor, so "does the box
+--- cover the readout" is answerable in tests (including the clamped case).
+local function TooltipRect(tip)
+    local p = tip.point
+    if not p then return nil, nil end
+    local width, height = tip.__width, tip.__height
+    local rel = p.relTo
+    if not rel or not rel.GetLeft then return nil, nil end
+    local relLeft, relRight = rel:GetLeft() or 0, rel:GetRight() or 0
+    local relTop, relBottom = rel:GetTop() or 0, rel:GetBottom() or 0
+    local ax, ay
+    if p.relPoint == "BOTTOMLEFT" or p.relPoint == "LEFT" or p.relPoint == "TOPLEFT" then
+        ax = relLeft
+    elseif p.relPoint == "BOTTOMRIGHT" or p.relPoint == "RIGHT" or p.relPoint == "TOPRIGHT" then
+        ax = relRight
+    else
+        ax = (relLeft + relRight) / 2
+    end
+    if p.relPoint == "BOTTOMLEFT" or p.relPoint == "BOTTOM" or p.relPoint == "BOTTOMRIGHT" then
+        ay = relBottom
+    elseif p.relPoint == "TOPLEFT" or p.relPoint == "TOP" or p.relPoint == "TOPRIGHT" then
+        ay = relTop
+    else
+        ay = (relTop + relBottom) / 2
+    end
+
+    local left, top
+    if p.point == "TOPLEFT" then
+        left, top = ax + p.x, ay + p.y
+    elseif p.point == "BOTTOMLEFT" then
+        left, top = ax + p.x, ay + p.y + height
+    elseif p.point == "TOPRIGHT" then
+        left, top = ax + p.x - width, ay + p.y
+    elseif p.point == "BOTTOMRIGHT" then
+        left, top = ax + p.x - width, ay + p.y + height
+    elseif p.point == "LEFT" then
+        left, top = ax + p.x, ay + p.y + height / 2
+    elseif p.point == "RIGHT" then
+        left, top = ax + p.x - width, ay + p.y + height / 2
+    elseif p.point == "CENTER" then
+        left, top = ax + p.x - width / 2, ay + p.y + height / 2
+    else
+        left, top = ax + p.x, ay + p.y
+    end
+
+    if tip.clamped then
+        local screenW = _G.UIParent:GetWidth()
+        local screenH = _G.UIParent:GetHeight()
+        if left < 0 then left = 0 end
+        if left + width > screenW then left = screenW - width end
+        if top > screenH then top = screenH end
+        if top - height < 0 then top = height end
+    end
+    return left, top
+end
+
+function _G.GameTooltip:GetLeft() return (TooltipRect(self)) end
+function _G.GameTooltip:GetTop()
+    local _, top = TooltipRect(self)
+    return top
+end
+function _G.GameTooltip:GetRight()
+    local left = TooltipRect(self)
+    return left and (left + self.__width)
+end
+function _G.GameTooltip:GetBottom()
+    local _, top = TooltipRect(self)
+    return top and (top - self.__height)
+end
 function _G.GameTooltip:ClearLines()
     self.lines = {}
     self.lineColors = {}

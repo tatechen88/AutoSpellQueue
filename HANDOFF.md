@@ -59,6 +59,7 @@
 | 中文界面名 | 插件列表 / 设置页标题 / 聊天前缀都是**施法容限** | 三张实机截图 |
 | 采样策略真机生效 | `采样策略: 已固定：每 300 秒只做一次漂移检查`；`记住的延迟: 29 ms`；`上次计算在 338 秒前` | `/asq status` 聊天输出 |
 | 设置页渲染 | StockTake 风格（标题 + 一行状态 + 2 复选框 + 重置按钮），无滚动框 | 实机截图 |
+| 悬停提示摆位 | 默认位（顶部）→ 挂下方；钉到**左下角** → 挂上方；钉到**右下角** → 挂上方 + 右对齐；三种情况读数条都没被遮住、都完整在屏内 | 三张实机截图（2026-09-28） |
 
 ## 怎么验证（贴真实输出，别写「应该没问题」）
 
@@ -93,6 +94,15 @@ pwsh tools/verify.ps1 -Package   # 追加 dist/AutoSpellQueue-<version>.zip
 > 两次都在玩家屏幕上留了 Blizzard 的 Lua 错误框，需要手动关掉。
 > **规矩**：注入的 `/run` 命令保持短（<100 字符）；更长的探针写成临时插件的一条 `/命令` 再调用。
 >
+> **把读数条钉到任意边角**（验证提示框摆位用，两条短命令）：
+> `/run AutoSpellQueueStatusBar:ClearAllPoints()` 然后
+> `/run AutoSpellQueueStatusBar:SetPoint("BOTTOMLEFT",UIParent,"BOTTOMLEFT",80,80)`
+> （右下角用 `BOTTOMRIGHT`、偏移 `-20,80`），再 `/run local b=AutoSpellQueueStatusBar b:GetScript("OnEnter")(b)`
+> 显示提示框 → 截图。用完 `/asq resetpos` 复位。
+>
+> **注意**：直接改 `AutoSpellQueueDB.statusBarPos` 再 `/reload` 是**无效**的——插件在 `PLAYER_LOGOUT`
+> 会用内存里的配置覆盖存档，手改的值会被写回去。要改位置就用上面的 SetPoint 或真实拖动。
+
 > **一眼判断错误框是不是本插件造成的**：看 Stack。若里面只有 `Interface/AddOns/Blizzard_*`、
 > 没有任何 `Interface/AddOns/AutoSpellQueue/`，那就是探针/其它插件的问题，与本插件无关。
 

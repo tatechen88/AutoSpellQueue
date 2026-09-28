@@ -487,26 +487,146 @@ local function SaveStatusBarPosition()
         { noRefresh = true })
 end
 
---- 把提示框放到不挡鼠标、也不被屏幕切掉的位置。
---  两个约束（2026-09-28 真机截图）：
---    1. 光标就停在读数条上，提示框若贴着它（或压在它上面），玩家的鼠标会被挡住；
---    2. 读数条默认在屏幕上方，往上挂会被屏幕顶端切掉——实测第一行「施法容限」和状态行
---       都跑到屏幕外，只剩后半段可见。
---  所以：优先挂在下方并留 8px 间隙；下方放不下（读数条拖到屏幕底部）才翻到上方，
---  两种情况都带间隙，且 SetClampedToScreen 保证不会跑出屏幕。
+--- 提示框摆位：纯函数，可对任意屏幕 / 读数条 / 提示框尺寸求位置。
+--
+--  三条硬要求（2026-09-28 玩家反馈 + 真机截图）：
+--    1. **绝不压在读数条上**——光标就停在读数条上，压上去等于压住鼠标；
+--    2. **完整落在屏幕内**——不能靠客户端夹紧兜底（夹紧会把框顶回读数条上，
+--       玩家反馈的"读数条放屏幕下方时鼠标完全看不到"就是这么来的）；
+--    3. **Show() 之前量不到真实尺寸**（客户端显示后才定尺寸，Show 前宽高为 0），
+--       所以必须在 Show() 之后再摆位——同一帧内完成，玩家看不到中间态。
+--
+--  候选顺序：下方左对齐 → 下方右对齐 → 上方左对齐 → 上方右对齐。
+--  下方优先（读数条通常在屏幕上方，往下摆离光标最远），左右两个对齐方式保证
+--  屏幕左右边缘也能落在屏内。取第一个「完整在屏内 且 不压读数条」的方案。
 local TOOLTIP_GAP = 8
 
-local function AnchorStatusBarTooltip(owner)
-    GameTooltip:ClearAllPoints()
-    GameTooltip:SetClampedToScreen(true)
-    local height = GameTooltip.GetHeight and (GameTooltip:GetHeight() or 0) or 0
-    local ownerBottom = owner.GetBottom and (owner:GetBottom() or 0) or 0
-    if ownerBottom - TOOLTIP_GAP - height >= 0 then
-        GameTooltip:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -TOOLTIP_GAP)
+--- 候选摆位：相对读数条的哪个角、偏移多少。
+local TOOLTIP_CANDIDATES = {
+    { key = "below-left",  point = "TOPLEFT",     relPoint = "BOTTOMLEFT",  below = true },
+    { key = "below-right", point = "TOPRIGHT",    relPoint = "BOTTOMRIGHT", below = true },
+    { key = "above-left",  point = "BOTTOMLEFT",  relPoint = "TOPLEFT",     below = false },
+    { key = "above-right", point = "BOTTOMRIGHT", relPoint = "TOPRIGHT",    below = false },
+}
+
+--- 某个候选方案下，提示框的绝对矩形（坐标系同客户端：左下为原点，y 向上）。
+local function RectForCandidate(owner, tip, candidate, gap)
+    local left, right, bottom, top
+    if candidate.below then
+        top = owner.bottom - gap
+        bottom = top - tip.height
     else
-        GameTooltip:SetPoint("BOTTOMLEFT", owner, "TOPLEFT", 0, TOOLTIP_GAP)
+        bottom = owner.top + gap
+        top = bottom + tip.height
+    end
+    if candidate.point == "TOPLEFT" or candidate.point == "BOTTOMLEFT" then
+        left = owner.left
+        right = left + tip.width
+    else
+        right = owner.right
+        left = right - tip.width
+    end
+    return { left = left, right = right, bottom = bottom, top = top }
+end
+
+local function RectFitsScreen(rect, screen)
+    return rect.left >= 0 and rect.right <= screen.width
+        and rect.bottom >= 0 and rect.top <= screen.height
+end
+
+local function RectOverlaps(rect, owner)
+    return rect.left < owner.right and rect.right > owner.left
+        and rect.bottom < owner.top and rect.top > owner.bottom
+end
+
+--- 选一个摆位。返回 candidate, rect, fits；fits=false 表示没有任何候选能完整落屏
+--- （屏幕极小或提示框比屏幕还高），此时取「上下空间更大」的一侧，允许被屏幕截断，
+--- 但仍然不与读数条重叠（选对了上下方向就自然满足）。
+local function PickTooltipAnchor(screen, owner, tip, gap)
+    gap = gap or TOOLTIP_GAP
+    for index = 1, #TOOLTIP_CANDIDATES do
+        local candidate = TOOLTIP_CANDIDATES[index]
+        local rect = RectForCandidate(owner, tip, candidate, gap)
+        if RectFitsScreen(rect, screen) and not RectOverlaps(rect, owner) then
+            return candidate, rect, true
+        end
+    end
+
+    local roomBelow = owner.bottom
+    local roomAbove = screen.height - owner.top
+    local candidate = TOOLTIP_CANDIDATES[roomBelow >= roomAbove and 1 or 3]
+    return candidate, RectForCandidate(owner, tip, candidate, gap), false
+end
+
+--- 把选中的方案套到真实的 GameTooltip 上。
+local function ApplyTooltipAnchor(owner, candidate, gap)
+    gap = gap or TOOLTIP_GAP
+    GameTooltip:ClearAllPoints()
+    -- Belt and braces: even if a screen is too small for every candidate, the
+    -- client still keeps the box inside the screen.
+    GameTooltip:SetClampedToScreen(true)
+    local y = candidate.below and -gap or gap
+    GameTooltip:SetPoint(candidate.point, owner, candidate.relPoint, 0, y)
+end
+
+--- 实测矩形（Show() 之后有效）。用于复查"有没有压到读数条"。
+local function OwnerRect(owner)
+    return {
+        left = owner:GetLeft() or 0,
+        right = owner:GetRight() or 0,
+        bottom = owner:GetBottom() or 0,
+        top = owner:GetTop() or 0,
+    }
+end
+
+local function ScreenRect()
+    local frame = UIParent
+    if not frame then return { width = 0, height = 0 } end
+    return { width = frame:GetWidth() or 0, height = frame:GetHeight() or 0 }
+end
+
+local function TooltipRect()
+    local left, right = GameTooltip:GetLeft(), GameTooltip:GetRight()
+    local bottom, top = GameTooltip:GetBottom(), GameTooltip:GetTop()
+    if not (left and right and bottom and top) then return nil end
+    return { left = left, right = right, bottom = bottom, top = top,
+        width = right - left, height = top - bottom }
+end
+
+--- Show() 之后调用：量尺寸 → 选位 → 套用 → 复查（真几何：完整落屏且不压读数条）。
+--  注意量的是**尺寸**（GetWidth/GetHeight，Show 后才有值），不是"矩形"——摆位之前
+--  工具提示还没有锚点，拿不到位置；客户端此时也可能把它放在任意默认位置。
+local function PlaceStatusBarTooltip(owner)
+    local screen = ScreenRect()
+    if screen.width <= 0 or screen.height <= 0 then return end
+
+    local tip = {
+        width = GameTooltip:GetWidth() or 0,
+        height = GameTooltip:GetHeight() or 0,
+    }
+    if tip.width <= 0 or tip.height <= 0 then return end
+
+    local ownerRect = OwnerRect(owner)
+    local candidate, _, fits = PickTooltipAnchor(screen, ownerRect, tip, TOOLTIP_GAP)
+    ApplyTooltipAnchor(owner, candidate, TOOLTIP_GAP)
+
+    -- Re-check on the real geometry: the client may have clamped the box, so make
+    -- sure it ended up fully on screen and off the readout, and flip if it did not.
+    local placed = TooltipRect()
+    if not placed then return end
+    local onScreen = RectFitsScreen(placed, screen)
+    local covers = RectOverlaps(placed, ownerRect)
+    if (not onScreen or covers) and fits then
+        local flipped = TOOLTIP_CANDIDATES[candidate.below and 3 or 1]
+        local flippedRect = RectForCandidate(ownerRect, tip, flipped, TOOLTIP_GAP)
+        if RectFitsScreen(flippedRect, screen) and not RectOverlaps(flippedRect, ownerRect) then
+            ApplyTooltipAnchor(owner, flipped, TOOLTIP_GAP)
+        end
     end
 end
+
+Options.PickTooltipAnchor = PickTooltipAnchor
+Options.RectForCandidate = RectForCandidate
 
 local function ShowStatusBarTooltip(owner)
     if not GameTooltip then return end
@@ -545,10 +665,11 @@ local function ShowStatusBarTooltip(owner)
     end
     GameTooltip:AddLine(SampledText(status), 0.80, 0.80, 0.80, true)
     GameTooltip:AddLine(L("TOOLTIP_STATUS_BAR"), 0.80, 0.80, 0.80, true)
-    -- Place it after the lines exist: the choice between below and above needs
-    -- the tooltip's real height.
-    AnchorStatusBarTooltip(owner)
+    -- Show first, place second: the client only knows the box's real width and
+    -- height once it is shown, and the placement decision needs both. Repositioning
+    -- happens in the same frame, so the player never sees an intermediate spot.
     GameTooltip:Show()
+    PlaceStatusBarTooltip(owner)
 end
 
 local function CreateStatusBar()
