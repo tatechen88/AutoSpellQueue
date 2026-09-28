@@ -114,8 +114,8 @@
 
 **延迟变化多久生效？**
 登录、换区、进副本或团本时它立刻重测；读数稳定后它不再反复测，之后每 5 分钟做一次漂移检查，
-真漂移了（超过 25ms）马上重新采样。客户端自己的延迟读数大约 30 秒刷新一次，所以你看到的数字
-最多滞后几十秒——够用，而且不再有固定节奏的轮询。
+真漂移了（超过 25ms）马上重新采样。客户端自己的延迟读数本身也是周期性刷新的（不是每秒都在变），
+所以任何插件看到的延迟都会有一段时间的滞后——这也是没必要一直测的原因。
 
 **为什么我关了插件，值就变回去了？**
 因为它认为那个值是你的，不是它的。
@@ -244,8 +244,9 @@ Yes — they fight over the same CVar. **Install one.**
 **How fast does it react?**
 It re-measures immediately on login, on zone changes and when you enter a dungeon or raid. Once the reading
 settles it stops re-measuring and only runs one drift check every 5 minutes, re-sampling at once if latency
-really moved (more than 25 ms). The client's own latency reading refreshes roughly every 30 s, so worst case
-you are a few tens of seconds behind — good enough, and without a fixed polling loop.
+really moved (more than 25 ms). The client's own latency reading is refreshed periodically too (it does not
+change every second), so any addon is a little behind by nature - which is exactly why there is no point in
+measuring constantly.
 
 **Why does my value change back when I disable it?**
 Because that value is yours, and it knows it.
