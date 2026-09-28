@@ -961,6 +961,15 @@ function Core.GetStatus()
         converged = Latency.IsConverged(Core.latency),
         cachedLatency = type(cfg.latencyCache) == "table" and cfg.latencyCache.value or nil,
         cachedLatencyAt = type(cfg.latencyCache) == "table" and cfg.latencyCache.at or nil,
+        -- Is the connection good enough? Drives the colour of the number on
+        -- screen: normal = white, clearly worse than this connection's usual (or
+        -- genuinely awful) = red. Rule lives in Latency.Quality.
+        latencyNormal = type(cfg.latencyCache) == "table" and cfg.latencyCache.value or nil,
+        latencyHighAt = Latency.HighThreshold(
+            type(cfg.latencyCache) == "table" and cfg.latencyCache.value or nil),
+        latencyQuality = Latency.Quality(
+            type(cfg.latencyCache) == "table" and cfg.latencyCache.value or nil,
+            snap.latency or Latency.Value(Core.latency)),
     }
 end
 

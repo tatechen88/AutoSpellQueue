@@ -53,6 +53,21 @@ Latency.MIN_SAMPLES = 3        -- never call it settled on one or two readings
 Latency.STABLE_EPSILON = 3     -- ms the smoothed value may still move and count as settled
 Latency.DRIFT_DEADBAND = 25    -- ms of movement that makes a drift check worth re-sampling
 
+--  "Is this latency bad?" - decides the colour of the number on screen.
+--
+--  A fixed threshold would cry wolf: plenty of players live at 200 ms, and a
+--  permanently red readout tells them nothing. So the verdict is relative to
+--  what THIS connection normally does (the latency the addon learned and
+--  remembered), with a floor so a small blip cannot trigger it and a ceiling so
+--  a genuinely awful connection is always flagged:
+--
+--      threshold = clamp(normal + HIGH_ABOVE_BASELINE, HIGH_FLOOR, HIGH_CEILING)
+--
+--  normal 30 -> 120 ; normal 200 -> 250 ; nothing learned yet -> 120
+Latency.HIGH_ABOVE_BASELINE = 60
+Latency.HIGH_FLOOR = 120
+Latency.HIGH_CEILING = 250
+
 local function FiniteNumber(value, fallback)
     local n = tonumber(value)
     if n == nil or n ~= n or n == math.huge or n == -math.huge then return fallback end
@@ -244,4 +259,24 @@ end
 --- True when the connection looks stable (used for the status card wording).
 function Latency.IsStable(tracker)
     return Latency.Count(tracker) >= 3 and Latency.Jitter(tracker) <= Latency.GOOD_ENOUGH_JITTER
+end
+
+--- The latency at which this connection counts as "too high".
+--  `normal` is what the addon learned earlier (persisted across sessions); 0 or
+--  nil means nothing is known yet, and the floor is used.
+function Latency.HighThreshold(normal)
+    local baseline = FiniteNumber(normal, 0)
+    local threshold = Latency.HIGH_FLOOR
+    if baseline > 0 then threshold = baseline + Latency.HIGH_ABOVE_BASELINE end
+    return Clamp(threshold, Latency.HIGH_FLOOR, Latency.HIGH_CEILING)
+end
+
+--- "good" | "high" | "unknown" for the current reading.
+--  unknown means the client has not reported a latency yet: no verdict, and the
+--  UI shows its neutral colour rather than guessing.
+function Latency.Quality(normal, current)
+    local now = FiniteNumber(current, 0)
+    if now <= 0 then return "unknown" end
+    if now >= Latency.HighThreshold(normal) then return "high" end
+    return "good"
 end

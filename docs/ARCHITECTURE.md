@@ -81,6 +81,31 @@
 > 实现注意：提示必须挂在**帧**上。`FontString` 在客户端收不到鼠标事件，且**没有 `HookScript`**
 > （只有 `SetScript`）——挂错会抛错并打断整页构建（2026-09-28 真机复现）。
 
+### 数字的颜色 = 连接好不好（不是状态好不好）
+
+玩家看得见的那个数字（悬浮状态条，以及面板状态行）按**延迟品质**着色：
+
+| 判据 | 颜色 |
+|---|---|
+| 延迟正常（≈ 本机平时水平） | **白色**——正常状态不需要吸引注意 |
+| 延迟明显偏高 | **红色** |
+| 客户端还没报出延迟（未知） | 白色（不猜） |
+| `error` / `unavailable` / `disabled` / `pending` | 保持各自的**状态色**（失败红、等待橙、关闭灰）——那些不是延迟问题 |
+
+偏高的判据是**相对本机平时**的，不是固定阈值（固定阈值会让平时就 200ms 的玩家永远看到红色）：
+
+```
+threshold = clamp(本机平时延迟 + 60ms, 120ms, 250ms)
+```
+
+`本机平时` = 上一节跨会话记住的 `latencyCache.value`；没学到时用下限 120ms。
+实现在 `Latency.HighThreshold` / `Latency.Quality`（纯函数，`good` / `high` / `unknown`），
+`Core.GetStatus()` 暴露 `latencyQuality` / `latencyNormal` / `latencyHighAt`；
+颜色映射在 `Options.ValueColor`。偏高时悬停提示会写明「当前 X ms，平时约 Y ms」，
+否则红色只是个谜（`HINT_LATENCY_HIGH` / `HINT_LATENCY_HIGH_NO_BASE`）。
+
+> 真机验证：正常延迟 → 白色；用临时阈值探针（`HIGH_FLOOR = 10`）让真实读数触发 → 红色。两者都截图确认。
+
 ## 4. 取值公式（唯一出处）
 
 ```

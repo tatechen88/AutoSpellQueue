@@ -270,6 +270,16 @@ local STRINGS = {
     ["LABEL_CONTEXT"] = { "场景", "場景", "Context" },
     ["LABEL_MARGIN"] = { "自适应余量", "自適應餘量", "Adaptive headroom" },
     ["LABEL_JITTER"] = { "延迟抖动", "延遲抖動", "Latency jitter" },
+    ["HINT_LATENCY_HIGH"] = {
+        "延迟 %d ms，明显高于本机平时（约 %d ms），所以数字显示为红色。",
+        "延遲 %d ms，明顯高於本機平時（約 %d ms），所以數字顯示為紅色。",
+        "Latency is %d ms - clearly worse than this machine's usual ~%d ms - so the number is shown in red.",
+    },
+    ["HINT_LATENCY_HIGH_NO_BASE"] = {
+        "延迟 %d ms，已经超过 %d ms，所以数字显示为红色。",
+        "延遲 %d ms，已經超過 %d ms，所以數字顯示為紅色。",
+        "Latency is %d ms, past the %d ms mark, so the number is shown in red.",
+    },
 
     ---------------------------------------------------------------------------
     --  Gameplay context / role

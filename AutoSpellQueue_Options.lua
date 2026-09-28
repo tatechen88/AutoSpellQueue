@@ -66,6 +66,24 @@ local STATE_COLOR = {
     idle        = { 0.55, 0.75, 1.00 },
 }
 
+--- Colour of the NUMBER the addon is managing, by connection quality:
+---   good/normal -> white (nothing to look at, which is the point)
+---   too high    -> red   (clearly worse than this connection's usual)
+--- Failure states keep their own colour: they are not about latency.
+local QUALITY_COLOR = {
+    good    = { 1.00, 1.00, 1.00 },
+    unknown = { 1.00, 1.00, 1.00 },
+    high    = { 0.95, 0.35, 0.35 },
+}
+
+--- The colour to draw a managed value with, given the state it is in.
+local function ValueColor(state, status)
+    if state == "applied" then
+        return QUALITY_COLOR[status.latencyQuality] or QUALITY_COLOR.good
+    end
+    return STATE_COLOR[state] or STATE_COLOR.idle
+end
+
 local PANEL_WIDTH = 640
 local PANEL_PAD = 16
 local POLL_INTERVAL = 0.5
@@ -362,7 +380,6 @@ local OpenOptions   -- forward declaration: the panel section defines it below
 
 local function StatusBarVisual(status)
     local state = ResolveState(status)
-    local color = STATE_COLOR[state] or STATE_COLOR.idle
     local text
     if state == "error" or state == "unavailable" or state == "disabled" then
         -- Never show a number for a state the addon is not managing.
@@ -375,7 +392,10 @@ local function StatusBarVisual(status)
             text = Format("UNIT_MS", current)
         end
     end
-    return text, color, state
+    -- The number itself is colour coded by the connection: white while latency is
+    -- what this machine normally sees, red once it is clearly worse. Failure and
+    -- waiting states keep their own colour - those are not latency problems.
+    return text, ValueColor(state, status), state
 end
 
 local function ApplyStatusBarPosition()
@@ -448,6 +468,19 @@ local function ShowStatusBarTooltip(owner)
     if state == "error" or state == "unavailable" then
         GameTooltip:AddLine(ReasonText(status), STATE_COLOR.error[1], STATE_COLOR.error[2],
             STATE_COLOR.error[3], true)
+    end
+    -- 为什么这个是红的：说清「比平时高多少」，否则红色只是个谜。
+    if state == "applied" and status.latencyQuality == "high" then
+        local normal = NumText(status.latencyNormal)
+        local reading = NumText(status.latency) or 0
+        local line
+        if normal then
+            line = Format("HINT_LATENCY_HIGH", reading, normal)
+        else
+            line = Format("HINT_LATENCY_HIGH_NO_BASE", reading, NumText(status.latencyHighAt) or 0)
+        end
+        GameTooltip:AddLine(line, QUALITY_COLOR.high[1], QUALITY_COLOR.high[2],
+            QUALITY_COLOR.high[3], true)
     end
     GameTooltip:AddLine(SampledText(status), 0.80, 0.80, 0.80, true)
     GameTooltip:AddLine(L("TOOLTIP_STATUS_BAR"), 0.80, 0.80, 0.80, true)
@@ -677,7 +710,9 @@ local function BuildUI(contentParent)
     AddUpdater(function()
         local status = refreshStatus
         local state = ResolveState(status)
-        local color = STATE_COLOR[state] or STATE_COLOR.idle
+        -- Same colour rule as the floating bar: a managed number is white while
+        -- the connection is normal and red once it is clearly worse.
+        local color = ValueColor(state, status)
         local current = EffectiveCurrent(status)
 
         -- Short by design: state, and the number only when the addon really is

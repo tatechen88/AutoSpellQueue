@@ -178,6 +178,28 @@ T.test("Latency: Restart 保留估计值，但要求重新采样", function()
     T.truthy(Latency.IsConverged(tracker), "重新采样稳定后再次收敛")
 end)
 
+T.test("Latency: 延迟是否偏高（决定数字变红的判据）", function()
+    -- 判据 = clamp(本机平时 + 60, 120, 250)：相对自己 + 有下限 + 有上限
+    T.eq(Latency.HighThreshold(nil), Latency.HIGH_FLOOR, "还没学到基准时用下限")
+    T.eq(Latency.HighThreshold(0), Latency.HIGH_FLOOR)
+    T.eq(Latency.HighThreshold(30), 120, "基准 30 → 90 抬到下限 120")
+    T.eq(Latency.HighThreshold(100), 160, "基准 100 → 160")
+    T.eq(Latency.HighThreshold(200), 250, "基准 200 → 260 被上限压回 250")
+    T.eq(Latency.HighThreshold(400), 250, "极慢的连接也用同一上限，不会永远红")
+
+    -- 质量判定
+    T.eq(Latency.Quality(30, 40), "good", "比平时低 → 正常")
+    T.eq(Latency.Quality(30, 119), "good", "刚好在阈值下方 → 正常")
+    T.eq(Latency.Quality(30, 120), "high", "达到阈值 → 偏高（边界含等于）")
+    T.eq(Latency.Quality(30, 400), "high")
+    T.eq(Latency.Quality(200, 210), "good", "平时就 200 的人，210 不该报警")
+    T.eq(Latency.Quality(200, 300), "high", "但 300 要报")
+    T.eq(Latency.Quality(nil, 130), "high", "没有基准时按下限 120 判")
+    T.eq(Latency.Quality(30, 0), "unknown", "客户端还没报延迟 → 不猜")
+    T.eq(Latency.Quality(30, nil), "unknown")
+    T.eq(Latency.Quality(30, 0 / 0), "unknown", "NaN → 不猜")
+end)
+
 T.test("Latency: Describe 一次给出三个有限值", function()
     local tracker = Latency.New()
     Latency.Push(tracker, 80, 0)

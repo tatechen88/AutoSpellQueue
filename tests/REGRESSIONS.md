@@ -156,6 +156,9 @@ UI 用例直接调用**真实的** `OnClick` / `OnUpdate` / `OnShow` / `OnDragSt
 | 长解释移到悬停提示后**内容不得丢失**（说明、算式、诊断入口都还在提示里） | `spec_options` `状态行：失败原因与算式都在悬停提示里…` |
 | 提示必须挂在**帧**上：字体串在客户端收不到鼠标事件（真机上抛过 `HookScript` nil，整页构建被打断） | `spec_options` `Boot…`（断言 `_G.ASQ_BUILD_ERROR == nil`）+ `状态行：…悬停提示…` |
 | 状态/控件几何：标题 → 状态行 → 两个复选框 → 按钮逐层向下；控件左边界统一 x=16（与 StockTake 一致） | `spec_options` `StockTake 风格布局…` |
+| **数字颜色随延迟品质**：正常=白、明显偏高=红；未知=白（不猜）；失败/等待/关闭仍用状态色 | `spec_options` `数字颜色随延迟品质变化…`；`spec_latency` `延迟是否偏高…` |
+| 偏高判据 = `clamp(平时+60, 120, 250)`：平时 200ms 的人不该永远红 | `spec_latency` `延迟是否偏高…`（含 200→210 正常、200→300 偏高、无基准用 120） |
+| 偏高时提示必须说明「为什么红」（当前值 + 平时值）；正常时不得出现该行 | `spec_options` `偏高时悬停提示必须说明…` |
 | **玩家可见设置恰好两个**（enabled / showStatus），面板里只有两个开关，v1 旋钮一个不剩 | `spec_options` `面板必须极简…`（守门用例）、`开关：只有 enabled 与 showStatus…` |
 | v1 的旋钮不会靠任何代码路径复活（SetConfig 拒绝退休键，旧存档被 Sanitize 清掉） | `spec_core` `SetConfig…`、`Sanitize: 错类型与越界…`；`spec_options` `面板不再暴露任何可调参数…` |
 | 配置白名单：新增任何配置键都必须经过审阅 | `spec_core` `结构: 配置白名单…` |

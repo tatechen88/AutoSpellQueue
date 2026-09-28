@@ -77,7 +77,9 @@ local function FakeStatus(overrides)
         latency = 100, home = 20, world = 100, specID = 63, specName = "Fire",
         classFile = "MAGE", cvarInfo = { known = true }, lastError = nil, lastErrorAt = nil,
         applyCount = 1, repairs = 0, externalChange = false, schemaFuture = false,
-        importedFrom = nil, refreshSeconds = 15, reason = "test", live = 245,
+        importedFrom = nil, reason = "test", live = 245,
+        -- 数字颜色用的延迟品质（默认：正常，白色）
+        latencyQuality = "good", latencyNormal = 30, latencyHighAt = 120,
         snapshotAt = Stub.now,
     }
     for key, value in pairs(overrides) do status[key] = value end
@@ -616,6 +618,83 @@ T.test("状态行：失败原因与算式都在悬停提示里（移到提示≠
     end)
 end)
 
+T.test("数字颜色随延迟品质变化：正常=白，明显偏高=红（状态色只在失败/等待时用）", function()
+    Boot()
+    local bar = StatusBar()
+    bar:Show()
+    local line = StatusLine()
+
+    local function BarColorFor(overrides)
+        local r, g, b
+        WithStatus(FakeStatus(overrides), function()
+            bar._accum = 0
+            Stub.FireUpdate(1.0)
+            r, g, b = bar._text:GetTextColor()
+        end)
+        return r, g, b
+    end
+
+    local function IsWhite(r, g, b) return r > 0.9 and g > 0.9 and b > 0.9 end
+    local function IsRed(r, g, b) return r > 0.8 and g < 0.6 and b < 0.6 end
+
+    -- 延迟正常 → 白色（"没什么可看的"才是正常状态）
+    local r, g, b = BarColorFor({ state = "applied", live = 245, latencyQuality = "good" })
+    T.truthy(IsWhite(r, g, b), "延迟正常时数字应为白色（实得 " .. tostring(r) .. "," .. tostring(g) .. "," .. tostring(b) .. "）")
+
+    -- 延迟明显偏高 → 红色
+    r, g, b = BarColorFor({ state = "applied", live = 245, latencyQuality = "high" })
+    T.truthy(IsRed(r, g, b), "延迟偏高时数字应为红色（实得 " .. tostring(r) .. "," .. tostring(g) .. "," .. tostring(b) .. "）")
+
+    -- 还没读到延迟 → 不猜，保持中性白
+    r, g, b = BarColorFor({ state = "applied", live = 245, latencyQuality = "unknown" })
+    T.truthy(IsWhite(r, g, b), "未知延迟时保持白色（不猜）")
+
+    -- 等待脱战：这是状态信息，不该被延迟品质改色
+    r, g, b = BarColorFor({ state = "pending", live = 245, inCombat = true, latencyQuality = "high" })
+    T.truthy(r > 0.9 and g > 0.6 and b < 0.4, "pending 仍用等待色（橙），与延迟品质无关")
+
+    -- 写入失败：仍然是红色，且不是"因为延迟高"
+    r, g, b = BarColorFor({ state = "error", live = 150, stateReasonKey = "ERR_REJECTED",
+        latencyQuality = "good" })
+    T.truthy(IsRed(r, g, b), "失败状态必须红（与延迟品质无关）")
+
+    -- 面板状态行用的是同一套规则
+    WithStatus(FakeStatus({ state = "applied", live = 245, latencyQuality = "high" }), function()
+        Options.Refresh()
+        local pr, pg, pb = line:GetTextColor()
+        T.truthy(IsRed(pr, pg, pb), "面板状态行也要跟着变红")
+    end)
+    WithStatus(FakeStatus({ state = "applied", live = 245, latencyQuality = "good" }), function()
+        Options.Refresh()
+        local pr, pg, pb = line:GetTextColor()
+        T.truthy(IsWhite(pr, pg, pb), "面板状态行正常时为白色")
+    end)
+end)
+
+T.test("偏高时悬停提示必须说明「为什么是红的」", function()
+    Boot()
+    local bar = StatusBar()
+    bar:Show()
+    WithStatus(FakeStatus({
+        state = "applied", live = 245, latencyQuality = "high", latencyNormal = 30,
+        latency = 210, latencyHighAt = 120,
+    }), function()
+        if _G.GameTooltip then _G.GameTooltip.lines = {} end
+        bar.__scripts.OnEnter(bar)
+        local joined = table.concat(_G.GameTooltip.lines, "\n")
+        T.contains(joined, "210", "提示里要有当前延迟数值")
+        T.contains(joined, "30", "提示里要有本机平时的延迟")
+    end)
+
+    -- 正常时不出现这条解释（别把提示写成噪音）
+    WithStatus(FakeStatus({ state = "applied", live = 245, latencyQuality = "good" }), function()
+        if _G.GameTooltip then _G.GameTooltip.lines = {} end
+        bar.__scripts.OnEnter(bar)
+        local joined = table.concat(_G.GameTooltip.lines, "\n")
+        T.isNil(string.find(joined, Core.L("HINT_LATENCY_HIGH"), 1, true),
+            "正常时不该出现「延迟偏高」的说明")
+    end)
+end)
 T.test("状态条：error / unavailable / disabled 只显示状态名，绝不显示数字", function()
     Boot()
     local bar = StatusBar()
