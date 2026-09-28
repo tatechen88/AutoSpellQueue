@@ -2,8 +2,8 @@
 
 > 简体中文 · [繁體中文](#zh-hant) · [English](#english)
 
-自动把《魔兽世界》正式服的**施法容限**（`SpellQueueWindow`，也常被叫作施法队列窗口）保持在适合你
-专精、网络延迟**与抖动**的值，并在它不再管理这个设置时，**把你自己原来的值还回去**。
+坦克、治疗、近战、远程——每个**专精**的节奏都不一样，插件给每个专精各自的**施法容限**（`SpellQueueWindow`）
+基准值，再用**算法**叠上你的延迟。不是固定数字，也不用你手动调；面板只有两个复选框，关闭时**把你自己原来的值还回去**。
 
 > 正式服 12.x（12.0.0–12.1.5）· v2.0.0 · MIT · 界面语言 enUS / zhCN / zhTW
 > 原名 `Tate_ASQ`（Tate's AutoSpellQueue），v2.0.0 起更名为 **AutoSpellQueue**。
@@ -115,8 +115,8 @@ docs/                         # 文档（不进发布包）
 
 # 繁體中文
 
-自動把《魔獸世界》正式服的**施法容限**（`SpellQueueWindow`，也常被稱為施法佇列視窗）維持在適合你
-專精、網路延遲**與抖動**的值，並在它不再管理這個設定時，**把你自己原本的值還回去**。
+坦克、治療、近戰、遠程——每個**專精**的節奏都不一樣，插件給每個專精各自的**施法容限**（`SpellQueueWindow`）
+基準值，再用**演算法**疊上你的延遲。不是固定數字，也不用你手動調；設定頁只有兩個核取方塊，關閉時**把你自己原本的值還回去**。
 
 > 正式服 12.x（12.0.0–12.1.5）· v2.0.0 · MIT · 介面語言 enUS / zhCN / zhTW
 > 原名 `Tate_ASQ`（Tate's AutoSpellQueue），v2.0.0 起更名為 **AutoSpellQueue**。
@@ -181,9 +181,9 @@ MIT，見 [`LICENSE`](LICENSE)。回報問題走 [GitHub Issues](https://github.
 
 # English
 
-Automatically keeps World of Warcraft Retail's **spell queue window** (`SpellQueueWindow`) at a value that
-fits your spec, your latency **and its jitter** - and gives **your own original value back** when it stops
-managing the setting.
+Tanks, healers, melee and ranged - every **spec** plays differently, so every spec gets its own
+**spell queue window** (`SpellQueueWindow`) baseline, and an **algorithm** folds in your latency. No fixed number
+and no manual tuning; two checkboxes, and **your own value** comes back when it stops managing the setting.
 
 > Retail 12.x (12.0.0-12.1.5) · v2.0.0 · MIT · UI languages enUS / zhCN / zhTW
 > Formerly `Tate_ASQ` (Tate's AutoSpellQueue); renamed to **AutoSpellQueue** in v2.0.0.

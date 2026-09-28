@@ -17,7 +17,8 @@
 
 ## 先说一句话
 
-装上一个插件，把你游戏里那个藏起来的设置——**施法容限**（`SpellQueueWindow`）——自动调成适合你专精和网速的值。你不用管它。
+坦克、治疗、近战、远程，每个**专精**的节奏都不一样——插件给每个专精各自的**施法容限**（`SpellQueueWindow`）
+基准值，再用**算法**叠上你的延迟。不是固定数字，也不用你手动调；面板只有两个复选框。
 
 ## 「施法容限」到底是什么（英文客户端叫施法队列窗口 / Spell Queue Window）
 
@@ -141,7 +142,8 @@
 
 ## 先說一句話
 
-裝上一個插件，把你遊戲裡那個藏起來的設定——**施法容限**（`SpellQueueWindow`）——自動調成適合你專精和網速的值。你不用管它。
+坦克、治療、近戰、遠程，每個**專精**的節奏都不一樣——插件給每個專精各自的**施法容限**（`SpellQueueWindow`）
+基準值，再用**演算法**疊上你的延遲。不是固定數字，也不用你手動調；設定頁只有兩個核取方塊。
 
 ## 「施法容限」到底是什麼（英文用戶端叫施法佇列視窗 / Spell Queue Window）
 
@@ -267,7 +269,9 @@
 
 ## The short version
 
-Install it, forget it. It keeps the game's hidden "spell queue window" set to a value that fits your spec and your ping.
+Tanks, healers, melee and ranged - every **spec** plays differently, so every spec gets its own
+**spell queue window** (`SpellQueueWindow`) baseline, and an **algorithm** folds in your latency.
+No fixed number, no manual tuning. Two checkboxes.
 
 ## What the spell queue window actually is (「施法容限」 on a Chinese client)
 
@@ -395,15 +399,15 @@ It does the number you couldn't be bothered to compute, then shuts up about it.
 
 **zhCN**
 
-> 自动把「施法容限」（`SpellQueueWindow`）调整到适合你专精与网络延迟（含抖动）的值，并在它不再管理时归还你自己原来的值。**装上即用，面板里只有两个复选框**；屏幕上的数字白色=网络正常、红色=明显偏高。只修改本地客户端设置，不自动施法、不联网、无遥测。
+> 坦克、治疗、近战、远程各有节奏，每个专精都有自己的基准值，算法再叠上你的延迟；不是固定数字，也不用手动调。
 
 **zhTW**
 
-> 自動把「施法容限」（SpellQueueWindow）調整到適合你專精與網路延遲（含抖動）的值，並在它不再管理時歸還你自己原本的值。**裝上即用，設定頁裡只有兩個核取方塊**；畫面上的數字白色=網路正常、紅色=明顯偏高。只修改本機用戶端設定，不自動施法、不連網、無遙測。
+> 坦克、治療、近戰、遠程各有節奏，每個專精都有自己的基準值，演算法再疊上你的延遲；不是固定數字，也不用你手動調。
 
 **en**
 
-> Keeps your spell queue window (`SpellQueueWindow`) tuned to your spec, latency **and its jitter**, and puts your own value back when it stops managing it. **Two checkboxes and you are done**; the number on screen is white when your connection is normal and red when it is clearly worse. It only changes a local client setting - no automation, no network access, no telemetry.
+> Melee, ranged, tank or healer - each spec gets its own baseline, and an algorithm folds in your latency. No fixed number, no manual tuning. Two checkboxes.
 
 ---
 

@@ -9,21 +9,21 @@
 
 **English**
 
-> Keeps your spell queue window (`SpellQueueWindow`) tuned to your spec, latency and its jitter, and puts your own value back when it stops managing it. Two checkboxes and you are done; the number on screen is white when your connection is normal and red when it is clearly worse. It only changes a local client setting - no automation, no network access, no telemetry.
+> Melee, ranged, tank or healer - each spec gets its own baseline, and an algorithm folds in your latency. No fixed number, no manual tuning. Two checkboxes.
 
 简体中文
 
-> 自动把「施法容限」（`SpellQueueWindow`）调整到适合你专精与网络延迟（含抖动）的值，并在它不再管理时归还你自己原来的值。装上即用，面板里只有两个复选框；屏幕上的数字白色=网络正常、红色=明显偏高。只修改本地客户端设置，不自动施法、不联网、无遥测。
+> 坦克、治疗、近战、远程各有节奏，每个专精都有自己的基准值，算法再叠上你的延迟；不是固定数字，也不用手动调。
 
 繁體中文
 
-> 自動把「施法容限」（`SpellQueueWindow`）調整到適合你專精與網路延遲（含抖動）的值，並在它不再管理時歸還你自己原本的值。裝上即用，設定頁裡只有兩個核取方塊；畫面上的數字白色=網路正常、紅色=明顯偏高。只修改本機用戶端設定，不自動施法、不連網、無遙測。
+> 坦克、治療、近戰、遠程各有節奏，每個專精都有自己的基準值，演算法再疊上你的延遲；不是固定數字，也不用你手動調。
 
 ## Description（Description 标签 → Markdown 模式 → 整段粘贴）
 
 ### English
 
-Install it, forget it. It keeps the game's hidden "spell queue window" (`SpellQueueWindow`) set to a value that fits your spec and your ping — and gives your own value back when it stops managing the setting.
+Tanks, healers, melee and ranged - every spec plays differently, so every spec gets its own spell queue window (`SpellQueueWindow`) baseline, and an algorithm folds in your latency. No fixed number, no manual tuning. Two checkboxes.
 
 **What the spell queue window actually is**
 
@@ -66,7 +66,7 @@ Feedback: [GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues). 
 
 ### 简体中文
 
-装上一个插件，把你游戏里那个藏起来的设置——施法容限（`SpellQueueWindow`）——自动调成适合你专精和网速的值。你不用管它。
+坦克、治疗、近战、远程，每个专精的节奏都不一样——插件给每个专精各自的施法容限（`SpellQueueWindow`）基准值，再用算法叠上你的延迟。不是固定数字，也不用你手动调；面板只有两个复选框。
 
 「施法容限」到底是什么 ：老玩家都经历过：读条快结束了，你按了下一个技能，游戏「记住」了这次按键，读条一结束立刻接上。这个缓冲区就叫施法队列，`SpellQueueWindow` 是它的长度（中文客户端里这个选项就叫施法容限），含义是「在当前读条 / GCD 结束前多少毫秒按下的键还算数」。暴雪默认给 400ms——对 20~60ms 的人，它同时意味着：你手滑按错的那个技能，也在 0.4 秒内都算数。
 
@@ -82,7 +82,7 @@ Feedback: [GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues). 
 
 ### 繁體中文
 
-裝上一個插件，把你遊戲裡那個藏起來的設定——施法容限（`SpellQueueWindow`）——自動調成適合你專精和網速的值。你不用管它。
+坦克、治療、近戰、遠程，每個專精的節奏都不一樣——插件給每個專精各自的施法容限（`SpellQueueWindow`）基準值，再用演算法疊上你的延遲。不是固定數字，也不用你手動調；設定頁只有兩個核取方塊。
 
 「施法容限」到底是什麼 ：老玩家都經歷過：詠唱快結束了，你按了下一個技能，遊戲「記住」了這次按鍵，詠唱一結束立刻接上。這個緩衝區就叫施法佇列，`SpellQueueWindow` 是它的長度（中文用戶端裡這個選項就叫施法容限），含義是「在目前詠唱 / GCD 結束前多少毫秒按下的鍵還算數」。暴雪預設給 400ms——對 20~60ms 的人，它同時意味著：你手滑按錯的那個技能，也在 0.4 秒內都算數。
 
