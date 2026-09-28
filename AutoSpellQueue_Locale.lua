@@ -32,20 +32,30 @@ local STRINGS = {
     ---------------------------------------------------------------------------
     --  Chat output (used by the core; the formats must stay %d / %s safe)
     ---------------------------------------------------------------------------
-    ["CHAT_CHANGED"] = {
-        "施法队列窗口：%d → %d 毫秒",
-        "施法佇列視窗：%d → %d 毫秒",
-        "SpellQueueWindow: %d → %d ms",
-    },
-    ["CHAT_RESTORED"] = {
-        "已还原你原本的施法队列窗口：%d 毫秒",
-        "已還原你原本的施法佇列視窗：%d 毫秒",
-        "Restored your original SpellQueueWindow: %d ms",
-    },
     ["CHAT_ERROR"] = {
         "写入失败：%s",
         "寫入失敗：%s",
         "Write failed: %s",
+    },
+    ["CHAT_BASE_CURRENT"] = {
+        "当前手动基础值：%d ms（/asq base auto 恢复自动）。",
+        "目前手動基礎值：%d ms（/asq base auto 恢復自動）。",
+        "Manual base value is %d ms (/asq base auto to go back).",
+    },
+    ["CHAT_BASE_AUTO"] = {
+        "已恢复按职业 / 专精自动取值。",
+        "已恢復依職業 / 專精自動取值。",
+        "Back to the automatic per-spec base value.",
+    },
+    ["CHAT_BASE_SET"] = {
+        "已把基础值固定为 %d ms（只影响基础值，延迟余量仍由插件自动计算）。",
+        "已把基礎值固定為 %d ms（只影響基礎值，延遲餘量仍由插件自動計算）。",
+        "Base value pinned to %d ms (headroom is still computed automatically).",
+    },
+    ["CHAT_BASE_INVALID"] = {
+        "用法：/asq base 180（50–400），或 /asq base auto 恢复自动。",
+        "用法：/asq base 180（50–400），或 /asq base auto 恢復自動。",
+        "Usage: /asq base 180 (50-400), or /asq base auto to go back.",
     },
 
     ---------------------------------------------------------------------------
@@ -122,9 +132,14 @@ local STRINGS = {
         "AutoSpellQueue",
     },
     ["PANEL_SUBTITLE"] = {
-        "按职业 / 专精与网络延迟自动维护 SpellQueueWindow（施法队列窗口）。它只改这一个客户端设置，不会替你施放技能。",
-        "依職業 / 專精與網路延遲自動維護 SpellQueueWindow（施法佇列視窗）。它只改這一個用戶端設定，不會替你施放技能。",
-        "Keeps SpellQueueWindow (the spell queue window) tuned to your class, spec and latency. It only changes this one client setting - it never casts for you.",
+        "按职业 / 专精、网络延迟与抖动自动维护 SpellQueueWindow（施法队列窗口）——**不需要任何设置**。它只改这一个客户端设置，不会替你施放技能。",
+        "依職業 / 專精、網路延遲與抖動自動維護 SpellQueueWindow（施法佇列視窗）——**不需要任何設定**。它只改這一個用戶端設定，不會替你施放技能。",
+        "Keeps SpellQueueWindow (the spell queue window) tuned to your class, spec, latency and jitter - **there is nothing to configure**. It only changes this one client setting and never casts for you.",
+    },
+    ["PANEL_FOOTER"] = {
+        "余量与写入阈值由插件按实测抖动自动决定，所以这里没有可调项。诊断：/asq status　·　给某个专精手动指定基础值：/asq base 180（恢复自动：/asq base auto）。",
+        "餘量與寫入門檻由插件依實測抖動自動決定，所以這裡沒有可調項。診斷：/asq status　·　給某個專精手動指定基礎值：/asq base 180（恢復自動：/asq base auto）。",
+        "Headroom and the write threshold are derived from your measured jitter, so there is nothing to tune here. Diagnostics: /asq status  ·  override the base value for a spec: /asq base 180 (back to auto: /asq base auto).",
     },
 
     ---------------------------------------------------------------------------
@@ -185,15 +200,10 @@ local STRINGS = {
         "偵測到來自更新版本的設定資料，已原樣保留，沒有改寫。",
         "Settings written by a newer version were found and are kept exactly as they are.",
     },
-    ["HINT_MAX_TOO_LOW"] = {
-        "注意：上限低于 50ms，预输入时间几乎被压没，等于关掉施法队列；建议把上限放回 400。",
-        "注意：上限低於 50ms，預輸入時間幾乎被壓沒，等於關掉施法佇列；建議把上限放回 400。",
-        "Heads up: the cap is below 50 ms, which leaves almost no time to queue the next ability. Consider putting the cap back to 400.",
-    },
     ["HINT_SAMPLED"] = {
-        "目标值 / 延迟 / 场景 / 专精 = 上一次计算的采样（每 %d 秒刷新一次）；当前值是实时读取。",
-        "目標值 / 延遲 / 場景 / 專精 = 上一次計算的取樣（每 %d 秒重新整理一次）；目前值是即時讀取。",
-        "Target / latency / context / spec are the sample of the last computation (every %d s); the current value is read live.",
+        "目标值 / 延迟 / 余量 / 场景 / 专精 = 上一次计算的采样（每 %d 秒刷新一次）；当前值是实时读取。余量按实测抖动自动决定，分数越高插件越保守。",
+        "目標值 / 延遲 / 餘量 / 場景 / 專精 = 上一次計算的取樣（每 %d 秒重新整理一次）；目前值是即時讀取。餘量依實測抖動自動決定，分數越高插件越保守。",
+        "Target / latency / headroom / context / spec are the sample of the last computation (every %d s); the current value is read live. Headroom is derived from measured jitter - the more jitter, the more conservative the addon gets.",
     },
     ["HINT_SNAPSHOT_AGE"] = {
         "上次计算在 %d 秒前。",
@@ -236,6 +246,8 @@ local STRINGS = {
     ["LABEL_REFRESH"] = { "刷新间隔", "重新整理間隔", "Refresh interval" },
     ["LABEL_CVAR"] = { "CVar 状态", "CVar 狀態", "CVar status" },
     ["LABEL_CONTEXT"] = { "场景", "場景", "Context" },
+    ["LABEL_MARGIN"] = { "自适应余量", "自適應餘量", "Adaptive headroom" },
+    ["LABEL_JITTER"] = { "延迟抖动", "延遲抖動", "Latency jitter" },
 
     ---------------------------------------------------------------------------
     --  Gameplay context / role
@@ -257,55 +269,12 @@ local STRINGS = {
         "Turning this off puts the SpellQueueWindow you had before back.",
     },
     ["SETTING_SHOW_STATUS"] = { "显示悬浮状态条", "顯示浮動狀態列", "Show floating status bar" },
-    ["SETTING_CHAT_FEEDBACK"] = {
-        "在聊天框提示每次改动",
-        "在聊天框提示每次改動",
-        "Chat feedback for every change",
-    },
-    ["SETTING_CHAT_FEEDBACK_HINT"] = {
-        "出错提示不受此项影响，始终显示。",
-        "出錯提示不受此項影響，一律顯示。",
-        "Error messages are always shown, even with this off.",
-    },
-    ["SETTING_BASE_MODE"] = { "基础值模式", "基礎值模式", "Base value mode" },
-    ["BASE_MODE_AUTO"] = { "自动（按职业 / 专精）", "自動（依職業 / 專精）", "Auto (class / spec)" },
-    ["BASE_MODE_MANUAL"] = { "手动", "手動", "Manual" },
-    ["SETTING_MANUAL_BASE"] = { "手动基础值", "手動基礎值", "Manual base value" },
-    ["SETTING_ADAPTIVE"] = { "按延迟自适应", "依延遲自動調整", "Adapt to latency" },
-    ["SETTING_MARGIN"] = { "延迟余量", "延遲餘量", "Latency margin" },
-    ["SETTING_MIN"] = { "下限", "下限", "Minimum" },
-    ["SETTING_MAX"] = { "上限", "上限", "Maximum" },
-    ["SETTING_HYSTERESIS"] = {
-        "迟滞（差值小于它就不写入）",
-        "遲滯（差值小於它就不寫入）",
-        "Hysteresis (differences below it are ignored)",
-    },
-    ["SETTING_LATENCY_SOURCE"] = { "延迟取值", "延遲取值", "Latency source" },
-    ["LATENCY_WORLD"] = { "世界", "世界", "World" },
-    ["LATENCY_HOME"] = { "本地", "本地", "Home" },
-    ["LATENCY_AVG"] = { "本地 / 世界平均", "本地 / 世界平均", "Average of home and world" },
-    ["LATENCY_MAX"] = { "取较大者", "取較大者", "Higher of the two" },
-    ["SETTING_STATUS_FONT"] = { "状态条字体", "狀態列字體", "Status bar font" },
-    ["SETTING_STATUS_FONT_SIZE"] = { "状态条字号", "狀態列字號", "Status bar font size" },
-    ["FONT_FRIZQUAD"] = { "Friz Quadrata（默认）", "Friz Quadrata（預設）", "Friz Quadrata (default)" },
-    ["FONT_ARIALN"] = { "Arial Narrow", "Arial Narrow", "Arial Narrow" },
-    ["FONT_MORPHEUS"] = { "Morpheus", "Morpheus", "Morpheus" },
-    ["FONT_SKURRI"] = { "Skurri", "Skurri", "Skurri" },
 
     ---------------------------------------------------------------------------
     --  Sections / buttons
     ---------------------------------------------------------------------------
-    ["SECTION_CALC"] = { "计算方式", "計算方式", "Calculation" },
-    ["SECTION_STATUS_BAR"] = { "悬浮状态条", "浮動狀態列", "Floating status bar" },
-    ["SECTION_MISC"] = { "其它", "其他", "Other" },
-    ["SECTION_DIAGNOSTICS"] = { "诊断（只读）", "診斷（唯讀）", "Diagnostics (read-only)" },
     ["BUTTON_RESET_POSITION"] = { "重置位置", "重設位置", "Reset position" },
-    ["BUTTON_RESET_SETTINGS"] = { "重置全部设置", "重設全部設定", "Reset all settings" },
-    ["BUTTON_RESET_SETTINGS_CONFIRM"] = { "再点一次确认", "再點一次確認", "Click again to confirm" },
-    ["BUTTON_REFRESH"] = { "立即重新计算", "立即重新計算", "Recalculate now" },
     ["BUTTON_CLOSE"] = { "X", "X", "X" },
-    ["ADVANCED_SHOW"] = { "显示高级设置", "顯示進階設定", "Show advanced settings" },
-    ["ADVANCED_HIDE"] = { "隐藏高级设置", "隱藏進階設定", "Hide advanced settings" },
 
     ---------------------------------------------------------------------------
     --  Tooltips
@@ -315,31 +284,10 @@ local STRINGS = {
         "左鍵開啟設定；按住拖曳可移動，位置會被記住。",
         "Left click: settings — drag to move; the position is remembered.",
     },
-    ["TOOLTIP_ADVANCED"] = {
-        "默认值已适配绝大多数情况，通常不需要改动。",
-        "預設值已適合絕大多數情況，通常不需要改動。",
-        "The defaults already fit almost every case, so you normally do not need to change anything.",
-    },
-    ["TOOLTIP_CLICK_CYCLE"] = { "点击切换", "點擊切換", "Click to cycle" },
-    ["TOOLTIP_RESET_SETTINGS"] = {
-        "所有选项恢复默认值；不会动已接管的 SpellQueueWindow。",
-        "所有選項回復預設值；不會動已接管的 SpellQueueWindow。",
-        "Every option goes back to its default; the SpellQueueWindow managed right now is not touched.",
-    },
-    ["TOOLTIP_REFRESH"] = {
-        "立刻重新读取游戏状态并重新决策。",
-        "立刻重新讀取遊戲狀態並重新決策。",
-        "Re-read the game state and decide again right now.",
-    },
     ["TOOLTIP_RESET_POSITION"] = {
         "把状态条放回屏幕上方居中，并重新显示。",
         "把狀態列放回畫面上方置中，並重新顯示。",
         "Puts the status bar back at the top of the screen and shows it again.",
-    },
-    ["TOOLTIP_STATUS_FONT"] = {
-        "字体不可用时会自动回退到默认字体。",
-        "字體不可用時會自動回退到預設字體。",
-        "An unusable font falls back to the default font.",
     },
 
     ---------------------------------------------------------------------------
@@ -351,7 +299,6 @@ local STRINGS = {
         "All settings are back to their defaults.",
     },
     ["MSG_POSITION_RESET"] = { "状态条位置已复位。", "狀態列位置已重設。", "Status bar position reset." },
-    ["MSG_REFRESHED"] = { "已重新计算。", "已重新計算。", "Recalculated." },
     ["MSG_STATUS_BAR_SHOWN"] = {
         "悬浮状态条已重新显示。",
         "浮動狀態列已重新顯示。",
@@ -378,8 +325,6 @@ local STRINGS = {
     ["VALUE_NO"] = { "否", "否", "No" },
     ["VALUE_NONE"] = { "无", "無", "None" },
     ["VALUE_PLACEHOLDER"] = { "--", "--", "--" },
-    ["VALUE_PLUS"] = { "+", "+", "+" },
-    ["VALUE_MINUS"] = { "-", "-", "-" },
     ["UNIT_MS"] = { "%d ms", "%d ms", "%d ms" },
     ["UNIT_SECONDS"] = { "%d 秒", "%d 秒", "%d s" },
 
@@ -392,9 +337,9 @@ local STRINGS = {
         "%d ms = max(base %d, latency %d + margin %d)",
     },
     ["FORMULA_BASE"] = {
-        "%d ms = 基础 %d（未启用自适应）",
-        "%d ms = 基礎 %d（未啟用自適應）",
-        "%d ms = base %d (adaptation off)",
+        "%d ms = 基础 %d（该专精被手动指定了基础值）",
+        "%d ms = 基礎 %d（該專精被手動指定了基礎值）",
+        "%d ms = base %d (base value overridden for this spec)",
     },
     ["FORMULA_CITY"] = {
         "%d ms = 基础 %d（城市中不按延迟调整）",
@@ -427,9 +372,9 @@ local STRINGS = {
     --  Slash commands (unlock also mentions that it shows the bar again)
     ---------------------------------------------------------------------------
     ["SLASH_HELP"] = {
-        "输入 /asq 打开设置；/asq status 查看诊断；/asq reset 恢复默认；/asq unlock 复位状态条位置（并重新显示状态条）。",
-        "輸入 /asq 開啟設定；/asq status 查看診斷；/asq reset 回復預設；/asq unlock 重設狀態列位置（並重新顯示狀態列）。",
-        "Type /asq for settings, /asq status for diagnostics, /asq reset to restore the defaults, /asq unlock to reset the status bar position (which shows the bar again).",
+        "输入 /asq 打开设置；/asq status 查看诊断；/asq reset 恢复默认；/asq unlock 复位状态条位置（并重新显示状态条）；/asq base 180 手动指定基础值（/asq base auto 恢复自动）。",
+        "輸入 /asq 開啟設定；/asq status 查看診斷；/asq reset 回復預設；/asq unlock 重設狀態列位置（並重新顯示狀態列）；/asq base 180 手動指定基礎值（/asq base auto 恢復自動）。",
+        "Type /asq for settings, /asq status for diagnostics, /asq reset to restore the defaults, /asq unlock to reset the status bar position (which shows the bar again), /asq base 180 to override the base value (/asq base auto to go back).",
     },
     ["SLASH_HELP_TITLE"] = { "可用命令：", "可用指令：", "Commands:" },
     ["SLASH_CMD_OPEN"] = {

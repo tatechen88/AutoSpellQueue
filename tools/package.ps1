@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     生成 AutoSpellQueue 发布包（dist/AutoSpellQueue-<version>.zip）。
@@ -49,6 +49,7 @@ $manifest = @(
     "$addonName.toc",
     "${addonName}_Locale.lua",
     "${addonName}_Formula.lua",
+    "${addonName}_Latency.lua",
     "${addonName}_CVar.lua",
     "$addonName.lua",
     "${addonName}_Options.lua"

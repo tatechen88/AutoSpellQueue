@@ -1,6 +1,6 @@
 # AutoSpellQueue
 
-自动把《魔兽世界》正式服的**施法队列窗口**（`SpellQueueWindow`）保持在适合你专精与网络延迟的值，
+自动把《魔兽世界》正式服的**施法队列窗口**（`SpellQueueWindow`）保持在适合你专精、网络延迟**与抖动**的值，
 并在它不再管理这个设置时，**把你自己原来的值还回去**。
 
 > 正式服 12.x（12.0.0–12.1.5）· v2.0.0 · MIT · 语言 enUS / zhCN / zhTW
@@ -16,9 +16,13 @@ README 只保留「装、跑、验证」这类实用信息。
 
 1. 下载 [Releases](https://github.com/tatechen88/AutoSpellQueue/releases) 里的 zip。
 2. 解压到 `World of Warcraft\_retail_\Interface\AddOns\`，得到 `AddOns\AutoSpellQueue\`。
-3. 进游戏。**默认就是开着的，不需要配置。**
+3. 进游戏。**默认就是开着的，不需要配置——面板里只有两个开关。**
 
 设置入口：游戏内 **选项 → 插件 → AutoSpellQueue**，或 `/asq`，或左键点悬浮状态条。
+
+**面板里只有两个开关**（总开关、要不要显示悬浮读数）。安全余量、写入阈值、延迟来源、窗口上下限
+全部由插件按实测数据自己决定——把旋钮交给玩家，等于把「调得好不好」的责任推给玩家。
+唯一的手动口子是命令行的 `/asq base <50-400>`（某专精的基础值你不同意时才用），它**不出现在面板里**。
 
 ### 从旧版 `Tate_ASQ` 升级
 
@@ -26,16 +30,18 @@ README 只保留「装、跑、验证」这类实用信息。
 2. 想保留旧设置的话，把
    `WTF\Account\<账号>\SavedVariables\Tate_ASQ.lua` 复制一份并改名为同目录的 `AutoSpellQueue.lua`。
    客户端**只加载与插件文件夹同名的存档文件**，不复制就回到默认设置（也能用）。
+   旧版的手动基础值会被迁移为 `/asq base` 的覆盖值，其余旋钮（余量、迟滞、延迟来源等）随版本退休。
 
 ## 一分钟上手
 
 | 我想…… | 怎么做 |
 |---|---|
 | 看现在的值 | `/dump GetCVar("SpellQueueWindow")` |
-| 看它为什么是这个值 | `/asq` → 状态卡里有完整算式 |
-| 看诊断 | `/asq status` |
+| 看它为什么是这个值 | `/asq` → 状态卡里有完整算式（含自适应余量） |
+| 看诊断（含算法当前的余量/抖动/写入次数） | `/asq status` |
 | 临时全关、把值还给我 | `/asq` 里关掉总开关（战斗中点会等到脱战） |
 | 状态条跑到屏幕外了 | `/asq unlock` |
+| 某个专精的基础值我想自己定 | `/asq base 180`（恢复自动：`/asq base auto`） |
 
 ## 它不做什么
 
@@ -70,16 +76,17 @@ pwsh tools/verify.ps1 -Package  # 追加：dist/AutoSpellQueue-<version>.zip
 
 ```
 AutoSpellQueue.toc            # 插件清单（版本号唯一权威出处）
-AutoSpellQueue_Locale.lua     # 136 个键 × enUS/zhCN/zhTW（同一张源表生成）
+AutoSpellQueue_Locale.lua     # 105 个键 × enUS/zhCN/zhTW（同一张源表生成）
 AutoSpellQueue_Formula.lua    # 纯计算：专精/延迟/场景 → 目标值（无 WoW API）
+AutoSpellQueue_Latency.lua    # 纯算法：延迟平滑与抖动 → 自适应余量/写入阈值（无 WoW API）
 AutoSpellQueue_CVar.lua       # 唯一读写 SpellQueueWindow 的地方（写入带读回校验）
 AutoSpellQueue.lua            # 配置校验与迁移、所有权状态机、事件与定时刷新
-AutoSpellQueue_Options.lua    # 设置面板、悬浮状态条、斜杠命令
+AutoSpellQueue_Options.lua    # 设置面板（极简）、悬浮状态条、斜杠命令
 tests/ tools/                 # 本地门禁（不进发布包）
 docs/                         # 文档（不进发布包）
 ```
 
-发布包只含 `AutoSpellQueue/` 下的 **6 个运行期文件**（1 个 `.toc` + 5 个 `.lua`），
+发布包只含 `AutoSpellQueue/` 下的 **7 个运行期文件**（1 个 `.toc` + 6 个 `.lua`），
 由 `tools/package.ps1` 保证；结构与指纹规则见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
 ## 许可证

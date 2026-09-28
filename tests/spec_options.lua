@@ -206,9 +206,21 @@ local function Panel()
     return Stub.FindFrame("AutoSpellQueueOptionsPanel")
 end
 
+--- Rows whose label text matches a locale key (or a raw key name when the key
+--- no longer exists). Used to assert the panel stays minimal.
+local function RowsWithLabel(labelKey)
+    local text = Core.L(labelKey)
+    local found = {}
+    for _, widget in ipairs(Stub.Widgets()) do
+        if widget.__kind == "FontString" and widget.text == text then
+            found[#found + 1] = widget.parent
+        end
+    end
+    return found
+end
+
 local function AdvancedFrame()
-    local row = RowOf("SETTING_BASE_MODE")
-    return row and row.parent or nil
+    return nil -- 高级区域已在 v2 移除；保留此名字只为让旧用例显式失败
 end
 
 ------------------------------------------------------------------------------
@@ -249,16 +261,44 @@ T.test("Boot: 面板、状态条、主区域控件都建起来了，且没有报
     T.notNil(CardCurrentValue(), "状态卡应有当前值一行")
 
     local fold = FindButtonByText(Core.L("ADVANCED_SHOW"))
-    T.notNil(fold, "应有高级折叠按钮")
-    T.notNil(AdvancedFrame(), "高级区域框架应存在")
+    T.isNil(fold, "高级折叠按钮已在 v2 移除（设置不该再分「高级」）")
 
     Options.Refresh()
     T.notNil(Badge(), "刷新后徽标仍应存在")
     T.truthy(Badge()._title ~= nil, "刷新后徽标应有状态标题")
 end)
 
-T.test("UI 只构建一次：重复 Build / Refresh 不再新建控件", function()
+T.test("面板必须极简：只有两个开关，没有任何旋钮（守门用例）", function()
     Boot()
+    -- 玩家可见设置只有 enabled / showStatus，面板里就只允许这两个开关。
+    T.notNil(RowOf("SETTING_ENABLED"), "总开关")
+    T.notNil(RowOf("SETTING_SHOW_STATUS"), "状态条开关")
+
+    -- v1 的旋钮必须一个都不剩（它们现在是算法的一部分，不再由玩家决定）。
+    local removed = {
+        "SETTING_BASE_MODE", "SETTING_MANUAL_BASE", "SETTING_ADAPTIVE",
+        "SETTING_MARGIN", "SETTING_MIN", "SETTING_MAX", "SETTING_HYSTERESIS",
+        "SETTING_LATENCY_SOURCE", "SETTING_STATUS_FONT", "SETTING_STATUS_FONT_SIZE",
+        "SETTING_CHAT_FEEDBACK",
+    }
+    for _, key in ipairs(removed) do
+        T.eq(#RowsWithLabel(key), 0, "面板里不该再有这个设置: " .. key)
+    end
+
+    local switches = 0
+    for _, widget in ipairs(Stub.Widgets()) do
+        if widget.__kind == "Button" and widget._track then switches = switches + 1 end
+    end
+    T.eq(switches, 2, "面板里只允许两个开关（实得 " .. switches .. "）")
+
+    -- 保留的唯一按钮是「重置位置」：它是动作，不是参数。
+    T.notNil(FindButtonByText(Core.L("BUTTON_RESET_POSITION")), "重置位置按钮应保留")
+
+    -- 脚注必须告诉玩家「这里没什么可调」，否则空面板会让人以为坏了。
+    T.truthy(#RowsWithLabel("PANEL_FOOTER") >= 1, "面板必须有一行说明「无需设置」的脚注")
+end)
+
+T.test("UI 只构建一次：重复 Build / Refresh 不再新建控件", function()    Boot()
     local count = #Stub.Widgets()
     Options.Build()
     Options.Build()
@@ -286,18 +326,12 @@ T.test("总开关：点击写入 Core.SetEnabled（真实配置）", function()
     T.truthy(Core.GetConfig().enabled, "再点一次应回到 true")
 end)
 
-T.test("高级开关：点击写入 Core 配置（adaptive / chatFeedback）", function()
+T.test("开关：只有 enabled 与 showStatus 两个，且都真的写进配置并生效", function()
     Boot()
-    resetWorld({ adaptive = true, chatFeedback = false })
+    resetWorld({ enabled = true, showStatus = true })
     Options.Refresh()
 
-    Click(SwitchOf("SETTING_ADAPTIVE"))
-    T.falsy(Core.GetConfig().adaptive, "ADAPTIVE 开关应写入 adaptive=false")
-
-    Click(SwitchOf("SETTING_CHAT_FEEDBACK"))
-    T.truthy(Core.GetConfig().chatFeedback, "CHAT_FEEDBACK 开关应写入 chatFeedback=true")
-
-    -- 显示状态条开关有副作用：真的 Show/Hide 状态条
+    -- showStatus：写配置 + 真的 Show/Hide 状态条（副作用必须与开关一致）
     local bar = StatusBar()
     bar:Show()
     Click(SwitchOf("SETTING_SHOW_STATUS"))
@@ -305,79 +339,47 @@ T.test("高级开关：点击写入 Core 配置（adaptive / chatFeedback）", f
     T.falsy(bar:IsShown(), "关掉开关后状态条必须隐藏")
     Click(SwitchOf("SETTING_SHOW_STATUS"))
     T.truthy(bar:IsShown(), "重新打开后状态条必须显示")
+
+    -- enabled：总开关写入后必须真的接管/归还
+    Stub.SetCVarValue(150)
+    Click(SwitchOf("SETTING_ENABLED"))
+    T.falsy(Core.GetConfig().enabled, "点击总开关应写入 enabled=false")
+    T.eq(Stub.CVarValue(), "150", "关闭后必须归还玩家原本的值")
+    Click(SwitchOf("SETTING_ENABLED"))
+    T.truthy(Core.GetConfig().enabled)
+    T.eq(Stub.CVarValue(), "245", "重新打开后应立即接管")
 end)
 
-T.test("步进控件：+/- 写入 Core 配置并被 Core 夹紧", function()
+T.test("面板不再暴露任何可调参数：Sanitize 会自动清掉旧存档里的旋钮", function()
     Boot()
-    resetWorld({ margin = 50, hysteresis = 10 })
-    Options.Refresh()
-
-    local minus, plus = StepperOf("SETTING_MARGIN")
-    T.notNil(minus, "margin 行应有 [-] 按钮")
-    T.notNil(plus, "margin 行应有 [+] 按钮")
-
-    Click(plus)
-    T.eq(Core.GetConfig().margin, 55, "margin 应 +5")
-    Click(minus)
-    Click(minus)
-    T.eq(Core.GetConfig().margin, 45, "margin 应 -10")
-
-    -- 上限由 Core.Sanitize 保证（Options 自己也夹一层）
-    Core.SetConfig("margin", 300, { noRefresh = true })
-    Options.Refresh()
-    Click(plus)
-    T.eq(Core.GetConfig().margin, 300, "超过上限必须被夹回 300")
-
-    -- 步长 1 的控件
-    local hysteresisMinus, hysteresisPlus = StepperOf("SETTING_HYSTERESIS")
-    Click(hysteresisPlus)
-    T.eq(Core.GetConfig().hysteresis, 11, "hysteresis 步长应为 1")
-    Click(hysteresisMinus)
-    T.eq(Core.GetConfig().hysteresis, 10)
-end)
-
-T.test("循环控件：baseMode 两档回绕、latencySource 四档回绕", function()
-    Boot()
-    resetWorld({ baseMode = "auto", latencySource = "world" })
-    Options.Refresh()
-
-    local baseMode = CycleOf("SETTING_BASE_MODE")
-    Click(baseMode)
-    T.eq(Core.GetConfig().baseMode, "manual")
-    Click(baseMode)
-    T.eq(Core.GetConfig().baseMode, "auto", "两档控件应回绕到起点")
-
-    local latency = CycleOf("SETTING_LATENCY_SOURCE")
-    local seen = {}
-    for _ = 1, 4 do
-        Click(latency)
-        seen[Core.GetConfig().latencySource] = true
+    -- 模拟一份从 v1 升级上来的存档（满是旧旋钮）
+    resetWorld({
+        adaptive = false,
+        margin = 250,
+        hysteresis = 30,
+        minWindow = 300,
+        maxWindow = 100,
+        baseMode = "manual",
+        manualBase = 180,
+        latencySource = "home",
+        statusFont = "Fonts\\ARIALN.TTF",
+        statusFontSize = 20,
+        chatFeedback = true,
+        showAdvanced = true,
+    })
+    local cfg = Core.GetConfig()
+    for _, retired in ipairs({ "adaptive", "margin", "hysteresis", "minWindow", "maxWindow",
+        "baseMode", "manualBase", "latencySource", "statusFont", "statusFontSize",
+        "chatFeedback", "showAdvanced" }) do
+        T.isNil(cfg[retired], "旧旋钮必须被清掉: " .. retired)
     end
-    T.eq(Core.GetConfig().latencySource, "world", "转一圈应回到 world")
-    for _, value in ipairs({ "home", "avg", "max" }) do
-        T.truthy(seen[value], "latencySource 应能循环到 " .. value)
-    end
-end)
-
-T.test("高级折叠：点击写入 showAdvanced 并真的显示/隐藏高级区域", function()
-    Boot()
-    resetWorld({ showAdvanced = false })
-    Options.Refresh()
-
-    local advanced = AdvancedFrame()
-    local fold = FindButtonByText(Core.L("ADVANCED_SHOW"))
-    T.notNil(fold, "折叠按钮文案应为 ADVANCED_SHOW")
-    T.falsy(advanced:IsShown(), "默认收起")
-
-    Click(fold)
-    T.truthy(Core.GetConfig().showAdvanced, "点击应写入 showAdvanced=true")
-    T.truthy(advanced:IsShown(), "展开后高级区域必须可见")
-    Options.Refresh()
-    T.eq(FindButtonByText(Core.L("ADVANCED_HIDE")) ~= nil, true, "展开后按钮文案应变为 ADVANCED_HIDE")
-
-    Click(fold)
-    T.falsy(Core.GetConfig().showAdvanced)
-    T.falsy(advanced:IsShown(), "再次点击应收起")
+    -- 唯一保留下来的是玩家刻意设置过的「手动基础值」，降级为命令级覆盖
+    T.eq(cfg.baseOverride, 180, "手动基础值必须作为逃生口保留")
+    -- 算法照常工作：仍然按延迟自适应
+    Stub.SetCVarValue(150)
+    Stub.worldLatency = 300
+    Core.Refresh("after-migration")
+    T.eq(Stub.CVarValue(), tostring(Core.GetStatus().target), "迁移后算法必须照常工作")
 end)
 
 T.test("修复: 带提示的行，标签必须顶对齐、提示在下方（否则两行字叠在一起）", function()
@@ -404,51 +406,20 @@ T.test("修复: 带提示的行，标签必须顶对齐、提示在下方（否�
         "提示必须落在标签下方（标签 y=" .. tostring(labelY) .. "，提示 y=" .. tostring(hintY) .. "）")
 end)
 
-T.test("修复: 内容变高时必须靠滚动，而不是把宿主撑大（否则溢出设置窗口）", function()
+T.test("修复: 内容必须放在滚动框里，且宿主高度不被内容撑大", function()
     Boot()
     local scroll = Stub.FindFrame("AutoSpellQueueOptionsScroll")
-    T.notNil(scroll, "设置内容必须放在滚动框里，否则高级设置会画到窗口外")
+    T.notNil(scroll, "设置内容必须放在滚动框里，否则内容一多就会画到窗口外")
     local content = scroll.__scrollChild
     T.notNil(content, "滚动框必须有内容子框")
     local host = scroll.parent
     T.notNil(host, "滚动框必须有宿主")
 
-    resetWorld({ showAdvanced = false })
+    resetWorld()
     Options.Refresh()
     local hostHeight = host:GetHeight()
-    local collapsed = content:GetHeight()
-
-    Click(FindButtonByText(Core.L("ADVANCED_SHOW")))
-    Options.Refresh()
-    local expanded = content:GetHeight()
-    T.truthy(expanded > collapsed,
-        "展开高级设置后内容应变高（多出来的部分靠滚动看，而不是画到窗口外）")
+    T.truthy(content:GetHeight() > 0, "内容必须有高度（否则滚动范围是空的）")
     T.eq(host:GetHeight(), hostHeight, "宿主高度不得被内容撑大——真机上表现为面板溢出设置窗口")
-
-    Click(FindButtonByText(Core.L("ADVANCED_HIDE")))
-    Options.Refresh()
-    T.eq(content:GetHeight(), collapsed, "收起后内容高度应还原")
-end)
-
-T.test("重置按钮：两段确认，4 秒后经 C_Timer 自动解除", function()
-    Boot()
-    resetWorld({ margin = 200 })
-    Options.Refresh()
-
-    local resetButton = FindButtonByText(Core.L("BUTTON_RESET_SETTINGS"))
-    T.notNil(resetButton, "应有重置设置按钮")
-
-    Click(resetButton)
-    T.eq(resetButton._text.text, Core.L("BUTTON_RESET_SETTINGS_CONFIRM"), "第一次点击进入确认态")
-    T.eq(Core.GetConfig().margin, 200, "第一次点击不得真的重置")
-
-    Stub.Advance(5) -- 确认态 4 秒后由 C_Timer 解除
-    T.eq(resetButton._text.text, Core.L("BUTTON_RESET_SETTINGS"), "超时后应回到初始文案")
-
-    Click(resetButton)
-    Click(resetButton)
-    T.eq(Core.GetConfig().margin, 50, "第二次确认应调用 Core.ResetSettings")
-    T.truthy(Stub.ChatContains(Core.L("MSG_RESET_DONE")))
 end)
 
 ------------------------------------------------------------------------------
@@ -762,23 +733,21 @@ T.test("修复: 状态条字体串必须自带字体（客户端对无字体 Fon
     T.truthy(type(label.text) == "string" and #label.text > 0, "应当已写入初始文本")
 end)
 
-T.test("修复: 上限低于 50ms 时必须给出警告（否则等于悄悄关掉施法队列）", function()
+T.test("安全边界由算法内部负责：旧存档里的低上限不再能把队列关掉", function()
     Boot()
-    resetWorld({ maxWindow = 400 })
-    Options.Refresh()
-    T.isNil(FindFontStringContaining(Core.L("HINT_MAX_TOO_LOW")), "正常上限不该出现警告")
-
-    -- Sanitize 自己挡住了最常见的那条路：只调低上限、下限还是默认 50 → min>max
-    -- → 两值双双复位，所以配置根本进不到公式里。
-    resetWorld({ maxWindow = 30 })
-    T.eq(Core.GetConfig().maxWindow, 400, "只调低上限会被 Sanitize 复位（min>max）")
-
-    -- 真正够得着的情况：上下限都低于 50ms（手改存档或旧配置）。
+    -- v1 允许把上限调到 30ms（等于悄悄关掉施法队列）。现在这个设置没了，
+    -- Sanitize 会把它清掉，公式只使用内部安全区间。
     resetWorld({ minWindow = 10, maxWindow = 30 })
-    Options.Refresh()
-    T.eq(Core.GetConfig().maxWindow, 30, "一致的低区间应当被接受（不静默改写用户配置）")
-    T.notNil(FindFontStringContaining(Core.L("HINT_MAX_TOO_LOW")),
-        "上限 30ms 会让预输入时间几乎消失，必须警告而不是照做")
+    local cfg = Core.GetConfig()
+    T.isNil(cfg.minWindow, "旧下限设置已被清除")
+    T.isNil(cfg.maxWindow, "旧上限设置已被清除")
+
+    Stub.SetCVarValue(150)
+    Stub.worldLatency = 0
+    Core.Refresh("bounds")
+    local target = Core.GetStatus().target
+    T.inRange(target, Core.WINDOW_MIN, Core.WINDOW_MAX, "目标必须落在内部安全区间内")
+    T.truthy(target >= Core.WINDOW_MIN, "绝不允许低于内部下限（那等于关掉队列）")
 end)
 
 T.test("斜杠 /asq status：输出诊断行（含状态、公式、CVar 信息）", function()
@@ -826,14 +795,43 @@ end)
 
 T.test("斜杠 /asq reset：恢复默认设置并反馈", function()
     Boot()
-    resetWorld({ margin = 250, hysteresis = 50, adaptive = false })
+    resetWorld({ enabled = true, showStatus = false, baseOverride = 180 })
     Stub.chat = {}
 
     SlashCmdList["AUTOSPELLQUEUE"]("reset")
-    T.eq(Core.GetConfig().margin, 50, "reset 应恢复默认 margin")
-    T.eq(Core.GetConfig().hysteresis, 10)
-    T.eq(Core.GetConfig().adaptive, true)
+    local cfg = Core.GetConfig()
+    T.eq(cfg.enabled, true, "reset 应恢复默认开关")
+    T.eq(cfg.showStatus, true)
+    T.isNil(cfg.baseOverride, "reset 应清掉命令级覆盖")
     T.truthy(Stub.ChatContains(Core.L("MSG_RESET_DONE")))
+end)
+
+T.test("斜杠 /asq base：命令级逃生口（设置面板里没有它）", function()
+    Boot()
+    resetWorld({ enabled = true })
+    Stub.SetCVarValue(150)
+    Stub.chat = {}
+
+    SlashCmdList["AUTOSPELLQUEUE"]("base 180")
+    T.eq(Core.GetConfig().baseOverride, 180, "应写入基础值覆盖")
+    T.eq(Core.GetStatus().base, 180, "立即生效")
+
+    Stub.chat = {}
+    SlashCmdList["AUTOSPELLQUEUE"]("base")
+    T.truthy(Stub.ChatContains("180"), "不带参数应回报当前覆盖值")
+
+    Stub.chat = {}
+    SlashCmdList["AUTOSPELLQUEUE"]("base auto")
+    T.isNil(Core.GetConfig().baseOverride, "auto 应恢复跟随专精表")
+    T.truthy(Stub.ChatContains(Core.L("CHAT_BASE_AUTO")))
+
+    Stub.chat = {}
+    SlashCmdList["AUTOSPELLQUEUE"]("base abc")
+    T.isNil(Core.GetConfig().baseOverride, "非法输入不得写入")
+    T.truthy(Stub.ChatContains(Core.L("CHAT_BASE_INVALID")), "非法输入必须给出用法")
+
+    -- 面板里绝不能有这个设置（它只存在于命令行）
+    T.eq(#RowsWithLabel("SETTING_MANUAL_BASE"), 0, "基础值覆盖不得出现在面板里")
 end)
 
 T.test("斜杠 /asq unlock：复位状态条位置（resetpos 同义）", function()

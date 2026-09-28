@@ -8,11 +8,11 @@
 ## SavedVariables: AutoSpellQueueDB, Tate_ASQDB
 ## IconTexture: Interface\Icons\Spell_Holy_BorrowedTime
 ## Category: Combat
-## OptionalDeps: LibSharedMedia-3.0
 ## X-Website: https://github.com/tatechen88/AutoSpellQueue
 
 AutoSpellQueue_Locale.lua
 AutoSpellQueue_Formula.lua
+AutoSpellQueue_Latency.lua
 AutoSpellQueue_CVar.lua
 AutoSpellQueue.lua
 AutoSpellQueue_Options.lua

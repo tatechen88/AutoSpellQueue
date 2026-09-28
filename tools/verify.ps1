@@ -34,11 +34,12 @@ $skipDirs = @('.git', 'node_modules', 'dist', '.scratch', '.vscode', '.idea')
 # 运行期文件（发布包内容，顺序即 .toc 加载顺序）
 $locale = "${addonName}_Locale.lua"
 $formula = "${addonName}_Formula.lua"
+$latency = "${addonName}_Latency.lua"
 $cvar = "${addonName}_CVar.lua"
 $core = "$addonName.lua"
 $options = "${addonName}_Options.lua"
 $toc = "$addonName.toc"
-$runtimeLua = @($locale, $formula, $cvar, $core, $options)
+$runtimeLua = @($locale, $formula, $latency, $cvar, $core, $options)
 $runtimeAll = @($toc) + $runtimeLua
 
 $script:Failures = @()
@@ -179,7 +180,7 @@ if (Test-Path -LiteralPath $tocPath -PathType Leaf) {
         Write-Bad ".toc 缺少 ## SavedVariables: 行"
     }
 
-    # --- 加载清单：必须是 5 个 .lua，顺序固定，文件都存在
+    # --- 加载清单：必须是 6 个 .lua，顺序固定，文件都存在
     $listed = @()
     foreach ($line in ($tocText -split "`r?`n")) {
         $trimmed = $line.Trim()
@@ -192,7 +193,7 @@ if (Test-Path -LiteralPath $tocPath -PathType Leaf) {
             if ($listed[$i] -ne $runtimeLua[$i]) { $orderOk = $false; break }
         }
     }
-    Test-Check ".toc 只列出 5 个 .lua，且顺序为 Locale/Formula/CVar/Core/Options" $orderOk ("实际: " + ($listed -join ' -> '))
+    Test-Check ".toc 只列出 6 个 .lua，且顺序为 Locale/Formula/Latency/CVar/Core/Options" $orderOk ("实际: " + ($listed -join ' -> '))
     foreach ($entry in $listed) {
         if ($entry -notmatch '\.lua$') {
             Write-Bad ".toc 清单里出现非 .lua 条目: $entry"

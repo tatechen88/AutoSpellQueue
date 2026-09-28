@@ -45,7 +45,8 @@
 ## 这个插件做的事
 
 1. 读你当前专精，给一个**手感基线**（高 APM 近战 ~140ms、标准近战 ~150ms、坦克略高、读条法系 ~240ms）
-2. 叠上你的**世界延迟 + 50ms 余量**，两者取大
+2. 叠上你的**世界延迟 + 自适应余量**，两者取大。余量不再写死 50ms：插件按实测的**延迟抖动**算，
+   连接稳就少留、抖动大就多留（30–150ms），所以不会出现「稳定网络白留一截」或「抖动网络留不够」
 3. 按场景微调：**城里只用基线**（城里没有战斗节奏），副本 / 团本 / 野外跟着延迟走
 4. 在客户端允许的 0~400ms 内取整
 5. 之后**每 15 秒**重看一次延迟——网速变了，值自己跟着变
@@ -71,11 +72,13 @@
 ## 装完怎么确认它在工作
 
 - `/dump GetCVar("SpellQueueWindow")` —— 看当前值
-- `/asq` —— 打开设置，主界面直接告诉你：当前值、目标值、延迟、场景，以及**这个值是怎么算出来的**
-- `/asq status` —— 在聊天框打一份诊断
-- 悬浮小条显示实时值，可以拖到顺手的位置；**左键点开设置**
+- `/asq` —— 打开面板，直接告诉你：当前值、目标值、延迟、场景，以及**这个值是怎么算出来的**
+- `/asq status` —— 在聊天框打一份诊断（含算法当前的余量、抖动、写入次数）
+- 悬浮小条显示实时值，可以拖到顺手的位置；**左键点开面板**
 
-第一次装，建议先去木桩前打两分钟，再决定要不要进高级设置里微调（或者干脆关掉）。
+**面板里只有两个开关**：总开关，和「要不要显示悬浮读数」。
+安全余量、写入阈值、延迟来源、窗口上下限都是插件按你的实测网络自己决定的——这些数字玩家猜不准，
+插件每 15 秒就能测一次，所以它们不该变成你要操心的选项。
 
 ## 它不是什么（这段请认真看）
 
@@ -154,12 +157,12 @@ Which is exactly why it shouldn't be a fixed number.
 ## What this addon does
 
 1. Reads your spec and picks a **feel baseline** (~140 ms high-APM melee, ~150 ms standard melee, slightly higher for tanks, ~240 ms for casters).
-2. Adds your **world latency + 50 ms** of headroom and takes the larger of the two.
+2. Adds your **world latency + adaptive headroom** and takes the larger of the two. The headroom is no longer a hardcoded 50 ms: it is derived from the **jitter it measures**, so a stable connection does not waste 50 ms and a noisy one gets more room (30–150 ms).
 3. Adjusts by context: **cities use the baseline only** (no combat pacing there), instances and the open world follow your latency.
 4. Rounds and clamps into the client's 0–400 ms range.
-5. Re-checks latency **every 15 seconds** while enabled — if your connection changes, the value follows.
+5. Re-checks latency **every 15 seconds** while enabled — if your connection changes, the value follows. It reacts fast when latency worsens and lets go slowly when it improves, so it never flaps.
 
-You don't need to understand any of that. It's on by default.
+You don't need to understand any of that. It's on by default, and there is nothing to configure.
 
 ## Who benefits / who doesn't
 
@@ -181,10 +184,13 @@ Honest version: this is **not** an "install it and your DPS goes up" addon. It t
 
 - `/dump GetCVar("SpellQueueWindow")` — the current value
 - `/asq` — the panel shows current value, target, latency, context, and **how the number was derived**
-- `/asq status` — a diagnostic dump into chat
-- The floating bar shows the live value — drag it where you want, **left-click opens settings**
+- `/asq status` — a diagnostic dump into chat (including the headroom and jitter the algorithm is using right now)
+- The floating bar shows the live value — drag it where you want, **left-click opens the panel**
 
-Give it a couple of minutes on a training dummy before you touch the advanced page, or before you decide to turn it off.
+**There are exactly two switches**: on/off, and whether the floating readout is drawn.
+Safety headroom, the write threshold, the latency source and the window limits are all decided by the addon from
+what it measures every 15 seconds — you cannot guess those numbers better than it can measure them, so they are
+not your problem to manage.
 
 ## What it is NOT (please read this part)
 

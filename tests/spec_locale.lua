@@ -210,9 +210,11 @@ end)
 T.test("格式化键必须带 % 占位符（否则参数会被静默丢掉）", function()
     -- Core/Options 用 :format() 传参的键：占位符数量不足会让数字消失。
     local formatKeys = {
-        CHAT_CHANGED = 2, CHAT_RESTORED = 1, CHAT_ERROR = 1,
+        CHAT_ERROR = 1, CHAT_BASE_CURRENT = 1, CHAT_BASE_SET = 1,
         HINT_DISABLED_OWNED = 1, HINT_ERROR = 1, HINT_UNAVAILABLE = 1,
         HINT_ERROR_AGE = 1, HINT_SAMPLED = 1, HINT_SNAPSHOT_AGE = 1,
+        FORMULA_ADAPTIVE = 4, FORMULA_BASE = 2, FORMULA_CITY = 2,
+        UNIT_MS = 1, UNIT_SECONDS = 1, DIAG_FLAGS = 4, MSG_UI_STEP_FAILED = 2,
     }
     local bad = {}
     for key, expected in pairs(formatKeys) do

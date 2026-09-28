@@ -128,32 +128,45 @@
 
 ## 5. UI / 本地化覆盖
 
-`run-tests.mjs` 按 `.toc` 顺序把五个运行期文件加载进同一个 `ns`（Locale 最先、Options 最后）；
+`run-tests.mjs` 按 `.toc` 顺序把六个运行期文件加载进同一个 `ns`（Locale 最先、Options 最后）；
 核心用例仍自己验证「没有 `ns.L` 也要能跑」（临时把 `ns.L` 置 nil），两件事不冲突。
 UI 用例直接调用**真实的** `OnClick` / `OnUpdate` / `OnShow` / `OnDragStop`，没有重写面板逻辑。
 
 | 不变量 | 锁定用例 |
 |---|---|
 | 面板只构建一次，之后只刷新、不重建 | `spec_options` `UI 只构建一次…` |
-| 总开关 / 步进 / 循环控件真的写 Core 配置（并被 Core 夹紧） | `spec_options` `总开关…`、`高级开关…`、`步进控件…`、`循环控件…` |
-| 高级折叠写 `showAdvanced` 并真的显示 / 隐藏 | `spec_options` `高级折叠…` |
-| 重置按钮两段确认、4 秒后经 `C_Timer` 自动解除 | `spec_options` `重置按钮…` |
+| **玩家可见设置恰好两个**（enabled / showStatus），面板里只有两个开关，v1 旋钮一个不剩 | `spec_options` `面板必须极简…`（守门用例）、`开关：只有 enabled 与 showStatus…` |
+| v1 的旋钮不会靠任何代码路径复活（SetConfig 拒绝退休键，旧存档被 Sanitize 清掉） | `spec_core` `SetConfig…`、`Sanitize: 错类型与越界…`；`spec_options` `面板不再暴露任何可调参数…` |
+| 配置白名单：新增任何配置键都必须经过审阅 | `spec_core` `结构: 配置白名单…` |
 | 状态卡六种状态文案；失败优先于 disabled；错误提示带本地化原因 | `spec_options` 三条 `状态卡：…` |
 | **写入失败不许显示数字**：状态条在 error/unavailable/disabled 只显示状态名；卡片显示客户端真实值或 `VALUE_UNAVAILABLE`，绝不用 target 冒充 | `spec_options` `状态条：error / unavailable / disabled…`、`P1 集成：真实写入被拒后…` |
 | 状态条拖动落点写入 `statusBarPos`（`noRefresh`）并夹紧在屏幕内 | `spec_options` `状态条拖动…` |
 | 解锁复位位置、必要时重新显示状态条 | `spec_options` 两条 `状态条位置：…` |
-| 四条斜杠命令 + 未知参数给 6 行帮助 | `spec_options` 五条 `斜杠…` |
+| 五条斜杠命令（含 `/asq base` 逃生口）+ 未知参数给帮助 | `spec_options` 六条 `斜杠…` |
 | 面板不可见时不刷新；重新显示立刻刷新 | `spec_options` `面板不可见时不刷新…` |
 | 三套语言键集完全相同、未列语言回退 enUS、缺键才回退键名 | `spec_locale` 前五条 |
 | UI/Core 用到的每个键（含 `STATE_*` 动态拼接与 `REASON_KEY` 的值）都有 enUS 文本 | `spec_locale` `UI/Core 源码里出现的每个本地化键…`、`动态拼接的键族…` |
 | 需要 `:format()` 的键必须带占位符 | `spec_locale` `格式化键必须带 % 占位符…` |
+
+### 算法（取代了原来的五个设置项）
+
+| 不变量 | 锁定用例 |
+|---|---|
+| 无样本时余量/迟滞落在安全下限，不返回 NaN | `spec_latency` 第 1 条 |
+| 未知延迟（0）不进窗口，不会把均值拉低 | `spec_latency` 第 2 条 |
+| 平滑不对称：变差立刻响应、变好慢慢放手 | `spec_latency` 第 3 条 |
+| 抖动↑ → 余量与写入阈值↑（原「安全余量」「迟滞」两个设置的功能） | `spec_latency` 第 4 条 |
+| 单个 600ms 尖刺不得把余量顶满（用平均绝对偏差，不是极差） | `spec_latency` 第 5 条 |
+| 余量/阈值永远在钳制区间内 | `spec_latency` 第 6 条 |
+| 采样窗口有上限；Reset 清空累计与平滑值 | `spec_latency` 第 7 条 |
+| 运行时确实把快照延迟喂给算法，并用算法给出的余量决策 | `spec_core` `定时器…`、`P1: 战斗中不写…`（断言写入值 == 实时目标） |
 
 ### 没覆盖什么（诚实声明）
 
 - **独立回退窗口**（客户端没有 `Settings` API 时的路径）没跑起来：初始化只发生一次，同一份 Lua state 只能选一条路径。
   测的是 12.x 主路径，另外验证了「无法打开面板时 `Options.Open()` 返回 false 且给出提示，不静默失败」。
 - 假的 `Settings.RegisterCanvasLayoutCategory` 不会真的把面板挂到设置窗口下；用例自己用 `Show()/Hide()` 模拟可见性门控。
-- 字体 / LibSharedMedia 只覆盖「没有 LibSharedMedia 时的四个内置字体」这条路径（stub 不提供 `LibStub`）。
+- **算法在真实网络下的表现**没测：`spec_latency` 验的是数学与边界，真机抖动分布只能靠实际游玩观察（`/asq status` 会打印当前余量与抖动）。
 - 所有 UI 用例跑在 `wow_stub.lua` 上：验证的是**逻辑**，不是真实客户端的渲染与锚点。屏幕固定 1920×1080。
 - 两条会影响整份测试语义的建模前提（改动会波及所有用例）：**新建 frame 默认「已显示」**（Options 的 poller 依赖这个语义）；
   **`frame.name` 是普通字段**（Settings API 读它当标题），按名字查控件要用创建名 `__name`。

@@ -17,47 +17,63 @@
 
 | # | 文件 | 职责 | 可否调用 WoW API |
 |---|---|---|---|
-| 1 | `AutoSpellQueue_Locale.lua` | 136 个键 × enUS/zhCN/zhTW，设置 `ns.L(key)` | 仅 `GetLocale()` |
+| 1 | `AutoSpellQueue_Locale.lua` | 105 个键 × enUS/zhCN/zhTW，设置 `ns.L(key)` | 仅 `GetLocale()` |
 | 2 | `AutoSpellQueue_Formula.lua` | 纯计算：专精 / 延迟 / 场景 → 目标值 | **禁止** |
-| 3 | `AutoSpellQueue_CVar.lua` | 唯一读写 `SpellQueueWindow` 的地方，环境可注入 | 通过 `env` 表 |
-| 4 | `AutoSpellQueue.lua` | 配置校验与迁移、所有权状态机、事件、定时刷新 | 是 |
-| 5 | `AutoSpellQueue_Options.lua` | 设置面板、悬浮状态条、斜杠命令 | 是 |
+| 3 | `AutoSpellQueue_Latency.lua` | 纯算法：延迟平滑、抖动估计 → 自适应余量与写入阈值 | **禁止** |
+| 4 | `AutoSpellQueue_CVar.lua` | 唯一读写 `SpellQueueWindow` 的地方，环境可注入 | 通过 `env` 表 |
+| 5 | `AutoSpellQueue.lua` | 配置校验与迁移、所有权状态机、事件、定时刷新 | 是 |
+| 6 | `AutoSpellQueue_Options.lua` | 设置面板（极简）、悬浮状态条、斜杠命令 | 是 |
 
-运行期只有这 5 个 `.lua` + 1 个 `.toc`。`tests/`、`tools/`、`docs/` **不进发布包**。
+运行期只有这 6 个 `.lua` + 1 个 `.toc`。`tests/`、`tools/`、`docs/` **不进发布包**。
 
-## 3. 取值公式（唯一出处）
+## 3. 设计原则：算法 > 设置
+
+**玩家只需要决定两件事**：插件开不开（`enabled`）、要不要看悬浮读数（`showStatus`）。
+其余一切——安全余量、写入阈值（迟滞）、延迟来源、窗口上下限、状态条字体——**都由插件自己决定**：
+
+- 能量化的（延迟、抖动）→ `Latency` 模块按实测算；
+- 不能量化但可以定死的（上下限 50–400、刷新 15 秒）→ 内部常量；
+- 玩家可能确有异议的（某专精的基础值）→ **只留命令级逃生口** `/asq base <ms>`，不进面板。
+
+**新增任何配置键之前必须回答**：玩家凭什么比插件更懂这个数？回答不了就应该写成算法常量，
+并由 `tests/spec_core.lua` 的「配置白名单」用例拦住（多一个键就会 FAIL）。
+
+## 4. 取值公式（唯一出处）
 
 ```
+margin     = clamp(40 + 1.5 × jitter, 30, 150)         -- 见 §5，玩家不可调
+hysteresis = clamp(5 + 1.0 × jitter, 5, 25)            -- 同上
+
 城市（安全区）     : target = base
-副本 / 野外       : target = max(base, latency + margin)      （adaptive = false 时退化为 base）
-最终              : clamp(round(target), minWindow, maxWindow)
+副本 / 野外       : target = max(base, latency + margin)
+最终              : clamp(round(target), 50, 400)
 ```
 
-- `base` 来自 `Formula`：先按 specID 查表（140–245ms），未知专精回退到职业值，再回退到定位兜底值，**永不返回 nil**。
-- `latency` 由 `PickLatency(latencySource, home, world)` 选出：默认 `world`，`world == 0` 时回退 `home`；可选 `home` / `avg` / `max`。
+- `base` 来自 `Formula`：先按 specID 查表（140–245ms），未知专精回退到职业值，再回退到定位兜底值，**永不返回 nil**；
+  若 `baseOverride` 存在（仅 `/asq base` 能写入）则用它，且**仍然叠加延迟自适应**。
+- `latency` 是 `Latency` 的**平滑值**（上升快、下降慢的 EMA），`world` 为 0 时回退 `home`，全为 0 时该次采样被忽略。
+- `jitter` 是最近 20 个采样的**平均绝对偏差**（不是极差：一次 600ms 尖刺不该把余量顶满）。
 - 场景判定：`IsInInstance()` → 副本；否则沿 `parentMapID` 上溯最多 4 层找 `Enum.UIMapFlag.IsCityMap`（`0x100000`）→ 城市；其余野外。
-- 客户端范围 0–400ms 由 `CVar.MIN` / `CVar.MAX` 与配置上下限共同约束。
+- 客户端范围 0–400ms 由 `CVar.MIN` / `CVar.MAX` 与内部常量共同约束。
 
-### 默认配置与合法区间
+### 配置（schema v2）
 
-| 键 | 默认 | 区间 / 取值 | 说明 |
+| 键 | 默认 | 区间 | 来源 |
 |---|---|---|---|
-| `enabled` | `true` | bool | 总开关 |
-| `baseMode` | `"auto"` | `auto` / `manual` | `manual` 时用 `manualBase` |
-| `manualBase` | `200` | 50–400 | 仅手动模式 |
-| `adaptive` | `true` | bool | 关掉后只用 base |
-| `latencySource` | `"world"` | `world`/`home`/`avg`/`max` | |
-| `margin` | `50` | 0–300 | 加在延迟上 |
-| `minWindow` / `maxWindow` | `50` / `400` | 0–400，且 min ≤ max | 越界与 `min>max` 由 `Sanitize` 修正；**UI 的上限步进下限是 50**，`maxWindow < 50` 时状态卡给出警告（不改写配置） |
-| `hysteresis` | `10` | 0–100 | 已接管后差值小于它就不写 |
-| `showStatus` | `true` | bool | 悬浮状态条 |
-| `statusFont` / `statusFontSize` | `Fonts\FRIZQT__.TTF` / `12` | 非空字符串 / 8–32 | 可改用 LibSharedMedia 字体名 |
-| `statusBarPos` | `nil` | `{x, y}` 数字 | 相对 UIParent 左上角 |
-| `chatFeedback` | `false` | bool | 每次改值都在聊天框报告 |
-| `showAdvanced` | `false` | bool | 设置面板折叠状态 |
-| `ownership` / `stats` | `nil` | 见 §4 | 运行时写入 |
+| `enabled` | `true` | bool | 玩家（面板开关） |
+| `showStatus` | `true` | bool | 玩家（面板开关） |
+| `statusBarPos` | `nil` | `{x, y}` 有限数字 | 插件账本（拖动状态条产生） |
+| `baseOverride` | `nil` | 50–400 | 逃生口，**只能**由 `/asq base` 写入 |
+| `ownership` / `stats` | `nil` | 见 §6 | 插件账本（运行时） |
 
-内部常量（不在配置里）：`Core.REFRESH_SECONDS = 15`、`Core.WARMUP_DELAYS = {2,5,10,20,40}`、`Core.SCHEMA_VERSION = 1`。
+内部常量（不在配置里）：`Core.REFRESH_SECONDS = 15`、`Core.WARMUP_DELAYS = {2,5,10,20,40}`、
+`Core.WINDOW_MIN = 50`、`Core.WINDOW_MAX = 400`、`Core.SCHEMA_VERSION = 2`，
+以及 `Latency.BASE_HEADROOM / JITTER_FACTOR / MARGIN_MIN / MARGIN_MAX / HYSTERESIS_* / SMOOTH_UP / SMOOTH_DOWN / WINDOW`。
+
+**v1 → v2 迁移**：v1 的 12 个旋钮（`baseMode`/`manualBase`/`adaptive`/`latencySource`/`margin`/
+`minWindow`/`maxWindow`/`hysteresis`/`statusFont`/`statusFontSize`/`chatFeedback`/`showAdvanced`）
+由 `Sanitize` 从存档中清除；其中玩家唯一可能刻意设置过的 `manualBase`（且 `baseMode == "manual"`）
+迁移为 `baseOverride`，不丢数据。
 
 ## 4. 状态机不变量（改动必须保持）
 
@@ -128,6 +144,25 @@ Formula.ComputeTarget(cfg, specID, classFile, home, world, context)  -- -> targe
 Formula.Describe(cfg, specID, classFile, home, world, context)       -- -> kind, base, latency, margin
 ```
 
+`cfg` 这里是 `Core.EffectiveOptions()` 产出的**扁平选项表**（玩家设置 + 算法实测值 + 内部常量），
+不是存档表本身；`Decide` 与 `Formula` 都只认这张表。
+
+### `ns.Latency`（纯算法，禁止调用 WoW API）
+
+```lua
+Latency.New(maxSamples)              -- 跟踪器（默认保留 WINDOW=20 个采样）
+Latency.Push(tracker, world, home)   -- 采样；world<=0 回退 home；两者都<=0 则忽略（不污染均值）
+Latency.Reset(tracker)               -- 进入世界/换图时清空（换了连接上下文）
+Latency.Count / Value / Jitter       -- 累计采样数 / 平滑延迟 / 平均绝对偏差
+Latency.Margin(tracker)              -- 自适应余量：clamp(40 + 1.5×jitter, 30, 150)
+Latency.Hysteresis(tracker)          -- 写入阈值：clamp(5 + 1.0×jitter, 5, 25)
+Latency.Describe(tracker)            -- -> value, margin, hysteresis
+Latency.IsStable(tracker)            -- 采样≥3 且 jitter ≤ 3
+```
+
+平滑是**不对称**的：`SMOOTH_UP = 0.5`（延迟变差时立刻跟上，绝不欠缓冲）、`SMOOTH_DOWN = 0.15`
+（变好时慢慢放手，避免来回抖动导致反复写值）。
+
 ### `ns.CVar`
 
 ```lua
@@ -153,17 +188,22 @@ CVar.GetEnv() / CVar.SetEnv(env)         -- 测试注入点
 
 ```lua
 Core.STATE.* / Core.DEFAULTS / Core.REASON_KEY / Core.SCHEMA_VERSION / Core.REFRESH_SECONDS
+Core.WINDOW_MIN / Core.WINDOW_MAX        -- 内部安全边界（50 / 400），不是设置
 Core.L(key) / Core.Output(text) / Core.Now()
 Core.GetConfig()                  -- 校验后的配置表；改值请走 SetConfig
-Core.SetConfig(key, value, opts)  -- opts = { noRefresh = true }；未知键返回 false
+Core.SetConfig(key, value, opts)  -- opts = { noRefresh = true }；未知键与 v1 退休键都返回 false
+Core.EffectiveOptions()           -- 配置 + 算法实测值 + 内部常量 → Decide/Formula 吃的扁平表
+Core.TrackLatency(snap)           -- 把快照里的延迟喂给 Latency（每次 Refresh 调用）
+Core.latency                      -- 跟踪器实例（测试可直接检查/清空）
+Core.SetBaseOverride(v|nil)       -- 逃生口：数字=固定基础值，"auto"/nil=跟随专精表
 Core.SetEnabled(bool) / Core.IsEnabled()
 Core.ResetSettings()              -- 恢复默认，保留所有权与统计
-Core.Refresh(reason)              -- 重读状态并执行决策，然后 SyncTicker；未进世界时什么都不做
+Core.Refresh(reason)              -- 重读状态、喂采样、执行决策，然后 SyncTicker；未进世界时什么都不做
 Core.SyncTicker()                 -- 定时器跟随「启用 或 仍持有所有权」（归还推迟/失败时不至于停摆）
 Core.RestoreOwnership(reason)     -- 归还玩家原值；返回 ok, reason
 Core.GetLiveValue()               -- 实时读 CVar（不缓存）
 Core.Snapshot()                   -- 最近一次读取的游戏状态
-Core.Decide(cfg, snap)            -- 纯决策
+Core.Decide(options, snap)        -- 纯决策（options 见 Core.EffectiveOptions）
 Core.GetStatus()                  -- 见下
 Core.Init()                       -- 创建事件帧（加载时已自动调用）
 ```
@@ -180,25 +220,31 @@ Core.Init()                       -- 创建事件帧（加载时已自动调用�
   inCombat, inWorld, context, role, base, latency, home, world,
   specID, specName, classFile, cvarInfo,
   lastError, lastErrorAt, applyCount, repairs, externalChange,
-  schemaFuture, importedFrom, refreshSeconds, reason }
+  schemaFuture, importedFrom, refreshSeconds, reason,
+  baseOverride,   -- 逃生口当前值（nil = 跟随专精表）
+  margin, hysteresis, jitter, smoothed, samples, stable }   -- 算法自述，供 /asq status
 ```
 
 ### 事件
 
-`ADDON_LOADED`（只认自己）· `PLAYER_LOGIN` · `PLAYER_ENTERING_WORLD` · `PLAYER_SPECIALIZATION_CHANGED`（**只处理 `player`**）·
+`ADDON_LOADED`（只认自己）· `PLAYER_LOGIN` · `PLAYER_ENTERING_WORLD`（重置采样并重新决策）·
+`PLAYER_SPECIALIZATION_CHANGED`（**只处理 `player`**）·
 `ZONE_CHANGED_NEW_AREA` · `ZONE_CHANGED` · `PLAYER_REGEN_ENABLED`（重新决策）· `CVAR_UPDATE`（0.5 秒防抖）· `PLAYER_LOGOUT`（归还）。
+
+> 事件注册逐个 `pcall`：一个坏事件名不得中断其余注册，也不得中断文件后续代码。
 
 ### 斜杠命令（由 `Options` 提供）
 
-`/asq` 打开设置 · `/asq status` 诊断 · `/asq reset` 重置设置 · `/asq unlock` 复位状态条位置并重新显示。
-别名 `/autospellqueue`。
+`/asq` 打开设置 · `/asq status` 诊断 · `/asq reset` 重置设置 · `/asq unlock` 复位状态条位置并重新显示 ·
+`/asq base <50-400>` 固定基础值 · `/asq base auto` 恢复跟随专精表。别名 `/autospellqueue`。
 
 ## 6. Locale 契约
 
 `ns.L = function(key) ... end`，提供 **enUS（必备）**、`zhCN`、`zhTW` 三套字符串，**键集必须完全一致**。
 未列出的语言回退 enUS；enUS 也缺才回退 key 本身。
 
-核心直接使用的键：`CHAT_CHANGED`（参数 target, previous）、`CHAT_RESTORED`、`CHAT_ERROR`，以及 §4 的 7 个 `ERR_*`。
+核心直接使用的键：`CHAT_ERROR`（参数为失败原因），以及 §6 的 7 个 `ERR_*`。
+改值不再有聊天提示——插件在工作时保持安静，只有错误会说话（`Core.NotifyError` 限流 120 秒）。
 
 > 历史教训：v2.0.0 开发中曾把「英文 = 回退 key 本身」当作设计，结果英文客户端会直接显示
 > `STATE_APPLIED` 这类内部键名。英文必须和其它语言一样是真实文案。
@@ -209,11 +255,12 @@ Core.Init()                       -- 创建事件帧（加载时已自动调用�
   禁止 `goto`、整除 `//`、位运算符、`table.unpack`、`setfenv`、`loadstring`、`math.mod`、`newproxy`。
   `tools/check-syntax.mjs` 的第二阶段会 lint 这些。
 - **`tests/wow_stub.lua`**：伪造 `CreateFrame` / `C_Timer` / `C_CVar` / `C_Map` / `GetNetStats` / `InCombatLockdown` /
-  `Settings` / `SlashCmdList` 等，让**全部 5 个运行期文件**能在 Node 里真实跑起来。
-  两条會影响测试语义的建模前提（改动会波及整份测试）：新建 frame 默认「已显示」；`frame.name` 会被 Settings API 当作标题。
-- **`tools/run-tests.mjs`**：按 `.toc` 顺序加载 5 个运行期文件（共享同一个 `ns`）后执行 `tests/run.lua`。
+  `Settings` / `SlashCmdList` 等，让**全部 6 个运行期文件**能在 Node 里真实跑起来。
+  三条会影响测试语义的建模前提（改动会波及整份测试）：新建 frame 默认「已显示」；`frame.name` 会被 Settings API 当作标题；
+  **FontString 没有字体时 `SetText` 会抛错**（与客户端一致，见 `tests/REGRESSIONS.md` 第 13 条）。
+- **`tools/run-tests.mjs`**：按 `.toc` 顺序加载 6 个运行期文件（共享同一个 `ns`）后执行 `tests/run.lua`。
 - **`tools/verify.ps1`**：① 语法 + 双兼容 lint ② 单测 ③ 结构与版本一致性 ④（`-Package`）打包。
-  任何一步失败都 exit 1；结构与版本检查包含 `.toc` 的版本号 / Interface / SavedVariables / 加载顺序、
+  任何一步失败都 exit 1；结构与版本检查包含 `.toc` 的版本号 / Interface / SavedVariables / 加载顺序（6 个 .lua）、
   `CHANGELOG` 最新条目 == `.toc`、`README` 提到该版本、无残留 `Tate_ASQ*` 文件名。
 - **`tools/package.ps1`**：产出 `dist/AutoSpellQueue-<version>.zip`。硬性约束见 §8；打包后会**逐条比对
   zip 内容与工作区文件**、断言每个条目的墙钟 == 固定常量、并**自检「同内容再打一份哈希是否一致」**（可复现性）；
@@ -226,6 +273,7 @@ AutoSpellQueue/
   AutoSpellQueue.toc
   AutoSpellQueue_Locale.lua
   AutoSpellQueue_Formula.lua
+  AutoSpellQueue_Latency.lua
   AutoSpellQueue_CVar.lua
   AutoSpellQueue.lua
   AutoSpellQueue_Options.lua

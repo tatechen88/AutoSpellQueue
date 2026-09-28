@@ -100,7 +100,7 @@
 ### 4.1 硬性约束（两种方式都必须满足）
 
 1. zip 根目录**正好**是 `AutoSpellQueue/`（文件夹名 == `.toc` 文件名）。
-2. 只含 **6 个运行期文件**（1 `.toc` + 5 `.lua`）；`tests/`、`tools/`、`docs/`、`.github/`、`node_modules/` 一律不进包。
+2. 只含 **7 个运行期文件**（1 `.toc` + 6 `.lua`）；`tests/`、`tools/`、`docs/`、`.github/`、`node_modules/` 一律不进包。
 3. `.toc` 的 `## Version` 与本次发布版本一致。
 4. 发布候选引用**逐条目内容 sha256**（跨打包器/时区/压缩等级都稳定）；zip 自身哈希只作同一脚本产出的快速校验。
 

@@ -15,7 +15,11 @@
 #### 玩家能感觉到的变化
 
 - **换名字了**：`Tate_ASQ` → **AutoSpellQueue**，插件文件夹名同步改变（升级步骤见下）。
-- **装上就能用**：设置页从一整页选项精简为「总开关 + 状态卡 + 折叠的高级设置」。状态卡直接给出当前值、目标值、延迟、场景，以及**这个数字是怎么算出来的**。
+- **不用设置了**：设置页从 12 个控件砍到 **2 个开关**（总开关 + 要不要显示悬浮读数）。参数不再需要你调——
+  插件自己算。想微调的人只剩一条命令行逃生口 `/asq base <50-400>`（给某个专精固定基础值）。
+- **算法接管了原来 5 个设置的活**：安全余量不再写死 50ms，而是按**实测抖动**算（稳定网络少留、抖动大就多留，30–150ms），
+  写入阈值同样按抖动自适应，避免网络一抖就反复改值；延迟平滑改成**变差立刻跟、变好慢慢放**，既不欠缓冲也不来回跳。
+- **装上就能用**：状态卡直接给出当前值、目标值、延迟、场景、**自适应余量**，以及**这个数字是怎么算出来的**。
 - **它真的会跟着网速走**：以前只在换地图 / 切专精时算一次，延迟变了也不会更新；现在**每 15 秒重算一次**（客户端自己的延迟读数约 30 秒刷新一次，所以最坏情况滞后几十秒）。
 - **界面不再说谎**：写不进去就显示「写入失败」和原因，而不是显示一个其实没生效的数字。失败 / 不可用 / 关闭这三种状态下，悬浮状态条只显示状态名，不显示任何数字。
 - **战斗中关插件会等脱战**：战斗中一律不写 CVar；关闭也会显示「等待脱战」，脱战后才把你的原值还回去。
@@ -33,6 +37,7 @@
 8. **第二轮逐行审查的收尾修复** —— 关掉插件后若归还被战斗推迟或写失败，15 秒定时器继续重试（不再依赖下次换图）；上限低于 50ms 时面板给出警告；状态条几何异常时不再抛错、也不会把 NaN 写进存档；`/asq status` 的「当前值」改为实时读取并标注采样时间。
 9. **修复「进入游戏后界面完全没有任何显示」** —— 状态条的字体串创建时未绑定字体，客户端在 `SetText` 时抛 `FontString:SetText(): Font not set`，而这个错误发生在界面初始化流程里，导致状态条与设置面板一起没被建出来。现在字体串自带字体，并且**每个界面部件独立初始化**：任何一个部件失败都会在聊天框报出部件名与原因，且不再影响其它部件（设置面板优先注册）。测试桩同步加严，按客户端规则模拟「无字体不得 SetText」，杜绝同类问题再次漏网。
 10. **修复设置页布局：提示文字重叠 + 展开高级设置后溢出窗口** —— ①带提示的开关行里标签原本垂直居中，与提示画在同一位置（表现为「启用自动调整pellQueueWindow 还原成你原本的值。」这种两行字叠在一起）；②设置内容比画布高时客户端不会替你滚动，旧代码还把宿主高度一起撑大，于是下面的行画到窗口外、盖住暴雪的「关闭」按钮。现在提示行的标签顶对齐、提示下移，且**所有设置内容放进滚动框**（设置画布与独立窗口共用同一套滚动），内容再高也只在框内滚动。
+11. **把「设置」变成「算法」（schema v2）** —— 玩家反馈「设置太多、要无感」。删掉 12 个旋钮：`baseMode`/`manualBase`（手动基础值）、`adaptive`、`latencySource`、`margin`、`minWindow`/`maxWindow`、`hysteresis`、`statusFont`/`statusFontSize`、`chatFeedback`、`showAdvanced`；新增纯算法模块 `AutoSpellQueue_Latency.lua` 承担余量（`40 + 1.5×抖动`，钳 30–150）、写入阈值（`5 + 1.0×抖动`，钳 5–25）与不对称延迟平滑（`SMOOTH_UP 0.5` / `SMOOTH_DOWN 0.15`）。旧存档里的旋钮会被 `Sanitize` 清掉，**唯一保留的是玩家刻意设过的手动基础值**——迁移为 `/asq base` 的覆盖值。新增「配置白名单」用例守住这条线：面板里出现第三个开关、或配置里冒出未经审阅的键就会失败。
 
 #### 升级须知（破坏性变更）
 
@@ -54,7 +59,9 @@
 #### What you will actually notice
 
 - **New name**: `Tate_ASQ` → **AutoSpellQueue**, and the addon folder changed with it (see "Upgrading" below).
-- **Works out of the box**: the options page went from a wall of settings to *master switch + status card + (collapsed) advanced*. The card shows the current value, target, latency, context, and **how the number was derived**.
+- **Nothing to configure**: the options page went from 12 controls to **2 switches** (on/off, and whether the floating readout is drawn). The parameters are no longer yours to tune — the addon computes them. The only manual escape hatch left is a command: `/asq base <50-400>` (pin the base value for one spec).
+- **The algorithm took over what five settings used to do**: the safety margin is no longer a hardcoded 50 ms — it is derived from **measured jitter** (a stable link wastes nothing, a noisy one gets room, 30–150 ms), and the write threshold adapts to the same jitter so a shaky connection cannot make it rewrite constantly. Latency smoothing is now **fast when you get worse, slow when you get better**: never under-buffered, never flapping.
+- **Works out of the box**: the status card shows the current value, target, latency, context, **the adaptive headroom**, and **how the number was derived**.
 - **It actually follows your connection now**: it used to recalculate only on zone / spec changes, so a latency shift never reached the value. It now **re-evaluates every 15 seconds** (the client's own latency reading refreshes roughly every 30 s, so worst case you are a few tens of seconds behind).
 - **The UI stopped lying**: a failed write shows "write failed" plus the reason instead of a believable number that was never applied. While failed / unavailable / disabled, the floating bar shows the state name only — never a number.
 - **Disabling in combat waits**: it never writes the CVar during combat, and disabling mid-fight shows "waiting" until combat ends before restoring your value.
@@ -72,6 +79,7 @@
 8. **Follow-up fixes from a line-by-line review** — if the restore is deferred by combat or the write fails, the 15 s timer keeps retrying instead of waiting for the next zone change; the panel warns when the cap is below 50 ms; broken status-bar geometry no longer raises or stores NaN; `/asq status` now prints the live value and labels the sample age.
 9. **Fixed "nothing at all shows up in game"** — the status bar's font string had no font bound, so the client raised `FontString:SetText(): Font not set` during UI setup, which took both the status bar and the settings panel down with it. The string now carries a font, and **every UI part initialises independently**: a failure names the part and the reason in chat and no longer blocks the rest (the settings panel is registered first). The test double now models the client rule ("no font ⇒ SetText fails") so this class of bug cannot slip through again.
 10. **Fixed two settings-page layout bugs: overlapping hint text, and content spilling out of the window** — (1) in rows that carry a hint, the label was vertically centred and drawn on top of the hint (it looked like `启用自动调整pellQueueWindow 还原成你原本的值。`, i.e. two lines stacked on one); (2) the client does not scroll a settings canvas, and the old code also grew the host frame with the content, so the lower rows were painted outside the window and over Blizzard's own Close button. Hinted rows now top-align their label, and **all settings content lives in a scroll frame** shared by the settings canvas and the standalone window, so tall content scrolls instead of overflowing.
+11. **Turned "settings" into "algorithm" (schema v2)** — players told us the options were far too complex and wanted it to just work. Twelve knobs are gone: `baseMode`/`manualBase`, `adaptive`, `latencySource`, `margin`, `minWindow`/`maxWindow`, `hysteresis`, `statusFont`/`statusFontSize`, `chatFeedback`, `showAdvanced`. A new pure module, `AutoSpellQueue_Latency.lua`, owns the headroom (`40 + 1.5 × jitter`, clamped 30–150), the write threshold (`5 + 1.0 × jitter`, clamped 5–25) and asymmetric smoothing (`SMOOTH_UP 0.5` / `SMOOTH_DOWN 0.15`). Retired keys are cleaned out of old save files by `Sanitize`; the one thing a player may have set deliberately — a manual base value — is migrated into the `/asq base` override instead of being thrown away. A new "config whitelist" test guards the line: a third switch in the panel, or any unreviewed config key, fails the suite.
 
 #### Upgrading (breaking changes)
 
@@ -83,8 +91,9 @@
 #### Other
 
 - Errors are no longer silent: write / read failures always print once in chat (the same reason is throttled to once per 120 s).
-- "Reset all settings" now also clears the floating bar's saved position.
-- New slash commands: `/asq`, `/asq status`, `/asq reset`, `/asq unlock`.
+- Routine value changes are now **silent** (the old optional "chat feedback" is gone): the addon should be invisible while it works.
+- The floating bar uses the client's own font, so it follows your game font and UI scale with no setting.
+- New slash commands: `/asq`, `/asq status`, `/asq reset`, `/asq unlock`, `/asq base <ms|auto>`.
 - New docs: `docs/ARCHITECTURE.md`, `docs/CURSEFORGE.md`, `docs/DESCRIPTION.md`, `docs/README.md` (doc map), `LICENSE` (MIT), `.pkgmeta`.
 
 ---

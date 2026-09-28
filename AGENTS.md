@@ -24,8 +24,11 @@ pwsh tools/verify.ps1 -Package # 追加打包：dist/AutoSpellQueue-<version>.zi
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) 是接口冻结文档：**改接口先改它**，再改代码。
 - **每个事实只有一个出处**：该写哪份文档见 [`docs/README.md`](docs/README.md) 的表格，别在多处各写一份。
-- 发布包只含 6 个运行期文件（1 个 `.toc` + 5 个 `.lua`），zip 根目录必须正好是 `AutoSpellQueue/`；
+- 发布包只含 7 个运行期文件（1 个 `.toc` + 6 个 `.lua`），zip 根目录必须正好是 `AutoSpellQueue/`；
   `tests/`、`tools/`、`docs/` 不进包。这条由 `tools/package.ps1` 强制。
+- **加设置项之前先看 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §3**：玩家只该决定 `enabled` 与 `showStatus`。
+  能量化的（延迟、抖动）写成算法，能定死的写成常量，确有异议的走 `/asq` 命令。
+  `tests/spec_core.lua` 的「配置白名单」用例会拦住悄悄长回来的设置。
 - 代码必须同时兼容 Lua 5.1（客户端）与 Lua 5.3（测试运行器）：不使用 `goto`、整除 `//`、
   位运算符、`table.unpack`、`setfenv`、`loadstring`、`math.mod`、`newproxy`（lint 会拦）。
 - **不写会烂的数字**：版本号只从 `.toc` 读；测试数量、包体积、哈希这类改成「用哪条命令取」。

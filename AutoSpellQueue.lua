@@ -25,6 +25,7 @@ local ADDON_NAME, ns = ...
 
 local Formula = ns.Formula
 local CVar = ns.CVar
+local Latency = ns.Latency
 
 local Core = {}
 ns.Core = Core
@@ -35,7 +36,7 @@ _G.AutoSpellQueue = Core
 Core.NAME = ADDON_NAME
 Core.SV = "AutoSpellQueueDB"
 Core.LEGACY_SV = "Tate_ASQDB"
-Core.SCHEMA_VERSION = 1
+Core.SCHEMA_VERSION = 2
 
 -- Refresh cadence while enabled. GetNetStats() refreshes its latency values
 -- roughly every 30s; 15s keeps the target at most one API update behind
@@ -44,6 +45,12 @@ Core.REFRESH_SECONDS = 15
 
 -- Retry schedule used while the client has no latency reading yet.
 Core.WARMUP_DELAYS = { 2, 5, 10, 20, 40 }
+
+-- Safety rails for the value we write, in ms. They are deliberately not
+-- settings: below 50 the queue is effectively off, and the client caps it at
+-- 400 anyway.
+Core.WINDOW_MIN = 50
+Core.WINDOW_MAX = 400
 
 Core.STATE = {
     IDLE = "idle",
@@ -66,44 +73,39 @@ end
 
 -------------------------------------------------------------------------------
 --  Configuration schema
+--
+--  v2 keeps only what a player can reasonably have an opinion about:
+--    enabled     - the master switch
+--    showStatus  - draw the floating readout
+--    baseOverride- command-only escape hatch (/asq base 180), not in the panel
+--  Everything else (safety margin, hysteresis, latency source, per-context
+--  behaviour, window rails) is computed by AutoSpellQueue_Latency.lua or fixed
+--  here, because the addon can measure those things better than a player can
+--  guess them.
 -------------------------------------------------------------------------------
 Core.DEFAULTS = {
-    schemaVersion = 1,
+    schemaVersion = 2,
     enabled = true,
-    baseMode = "auto",          -- "auto" | "manual"
-    manualBase = 200,
-    adaptive = true,
-    latencySource = "world",    -- "world" | "home" | "avg" | "max"
-    margin = 50,
-    minWindow = 50,
-    maxWindow = 400,
-    hysteresis = 10,
     showStatus = true,
-    statusFont = "Fonts\\FRIZQT__.TTF",
-    statusFontSize = 12,
     statusBarPos = nil,
-    chatFeedback = false,
-    showAdvanced = false,
+    baseOverride = nil,         -- number (50..400) | nil = follow the spec table
     ownership = nil,
     stats = nil,
 }
 
-local LIMITS = {
-    manualBase = { 50, 400 },
-    margin = { 0, 300 },
-    minWindow = { 0, 400 },
-    maxWindow = { 0, 400 },
-    hysteresis = { 0, 100 },
-    statusFontSize = { 8, 32 },
+-- Keys that may be written through SetConfig even though their default is nil.
+local OPTIONAL_KEYS = {
+    statusBarPos = true,
+    baseOverride = true,
+    ownership = true,
 }
 
-local ENUMS = {
-    baseMode = { auto = true, manual = true },
-    latencySource = { world = true, home = true, avg = true, max = true },
+local LIMITS = {
+    baseOverride = { 50, 400 },
 }
 
 local BOOLEAN_KEYS = {
-    "enabled", "adaptive", "showStatus", "chatFeedback", "showAdvanced",
+    "enabled", "showStatus",
 }
 
 -- Maps a CVar failure reason to a locale key (shared with the options panel).
@@ -170,33 +172,31 @@ function Core.Sanitize(db)
     end
 
     for key, range in pairs(LIMITS) do
-        local n = IsFiniteNumber(db[key])
-        if n == nil then
-            db[key] = Core.DEFAULTS[key]
-            repairs = repairs + 1
+        local raw = db[key]
+        if raw == nil then
+            db[key] = Core.DEFAULTS[key] -- stays nil for the optional keys
         else
-            local clamped = Formula.Clamp(math.floor(n + 0.5), range[1], range[2])
-            if clamped ~= n then repairs = repairs + 1 end
-            db[key] = clamped
+            local n = IsFiniteNumber(raw)
+            if n == nil then
+                db[key] = Core.DEFAULTS[key]
+                repairs = repairs + 1
+            else
+                local clamped = Formula.Clamp(math.floor(n + 0.5), range[1], range[2])
+                if clamped ~= n then repairs = repairs + 1 end
+                db[key] = clamped
+            end
         end
     end
 
-    for key, allowed in pairs(ENUMS) do
-        if not allowed[db[key]] then
-            db[key] = Core.DEFAULTS[key]
+    -- Keys retired in schema v2 (they used to be player settings) must not
+    -- linger in the save file: they would come back as unknown data forever.
+    for _, key in ipairs({ "baseMode", "manualBase", "adaptive", "latencySource",
+        "margin", "minWindow", "maxWindow", "hysteresis",
+        "statusFont", "statusFontSize", "chatFeedback", "showAdvanced" }) do
+        if db[key] ~= nil then
+            db[key] = nil
             repairs = repairs + 1
         end
-    end
-
-    if db.minWindow > db.maxWindow then
-        db.minWindow = Core.DEFAULTS.minWindow
-        db.maxWindow = Core.DEFAULTS.maxWindow
-        repairs = repairs + 1
-    end
-
-    if type(db.statusFont) ~= "string" or db.statusFont == "" or #db.statusFont > 200 then
-        db.statusFont = Core.DEFAULTS.statusFont
-        repairs = repairs + 1
     end
 
     local pos = db.statusBarPos
@@ -248,7 +248,18 @@ end
 
 -- Ordered schema migrations: MIGRATIONS[n] upgrades schema (n-1) -> n.
 local MIGRATIONS = {
-    -- [2] = function(db) ... end,
+    -- v1 -> v2: the addon stopped asking the player to configure the algorithm.
+    -- A manual base value is the one thing a player may have deliberately set,
+    -- so it is carried over as the (command-only) override instead of being
+    -- thrown away; every other retired key is dropped by Sanitize.
+    [2] = function(db)
+        if db.baseMode == "manual" and IsFiniteNumber(db.manualBase) then
+            local manual = IsFiniteNumber(db.manualBase)
+            if manual >= 50 and manual <= 400 then
+                db.baseOverride = math.floor(manual + 0.5)
+            end
+        end
+    end,
 }
 
 --- Brings a loaded table up to Core.SCHEMA_VERSION.
@@ -285,9 +296,7 @@ function Core.ImportLegacy()
     if type(old) ~= "table" then return nil end
     local imported = {}
     local keys = {
-        "enabled", "baseMode", "manualBase", "adaptive", "latencySource",
-        "margin", "minWindow", "maxWindow", "hysteresis", "showStatus",
-        "statusFont", "statusFontSize", "statusBarPos",
+        "enabled", "baseMode", "manualBase", "showStatus", "statusBarPos",
     }
     for _, key in ipairs(keys) do
         if old[key] ~= nil then imported[key] = old[key] end
@@ -324,7 +333,7 @@ end
 --  opts.noRefresh suppresses the immediate re-evaluation.
 function Core.SetConfig(key, value, opts)
     local cfg = Core.GetConfig()
-    if Core.DEFAULTS[key] == nil and key ~= "statusBarPos" and key ~= "ownership" then
+    if Core.DEFAULTS[key] == nil and not OPTIONAL_KEYS[key] then
         return false, "unknown-key"
     end
     cfg[key] = value
@@ -352,12 +361,63 @@ function Core.ResetSettings()
     end
     -- pairs() skips keys whose default is nil, so clear those explicitly.
     cfg.statusBarPos = nil
+    cfg.baseOverride = nil
     cfg.ownership = ownership
     cfg.stats = stats
     cfg.schemaVersion = Core.SCHEMA_VERSION
     Core.Sanitize(cfg)
     Core.Refresh("reset")
     return true
+end
+
+-------------------------------------------------------------------------------
+--  The algorithm's view of the settings
+--
+--  The decision functions take one flat table. The player only controls two
+--  booleans; everything else is produced here (latency tracker) or fixed.
+-------------------------------------------------------------------------------
+Core.latency = Latency.New()
+
+--- Builds the table Formula/Decide consume for the current refresh.
+function Core.EffectiveOptions()
+    local cfg = Core.GetConfig()
+    local smoothed, margin, hysteresis = Latency.Describe(Core.latency)
+    return {
+        -- player settings
+        enabled = cfg.enabled,
+        ownership = cfg.ownership,
+        baseOverride = cfg.baseOverride,
+        -- measured
+        margin = margin,
+        hysteresis = hysteresis,
+        latency = smoothed,
+        -- fixed policy
+        baseMode = cfg.baseOverride and "manual" or "auto",
+        manualBase = cfg.baseOverride or 0,
+        adaptive = true,
+        latencySource = "world",
+        minWindow = Core.WINDOW_MIN,
+        maxWindow = Core.WINDOW_MAX,
+    }
+end
+
+--- Feeds the latency tracker from a snapshot. Called once per refresh.
+function Core.TrackLatency(snap)
+    if not snap then return end
+    Latency.Push(Core.latency, snap.world, snap.home)
+end
+
+--- Applies the /asq base escape hatch. nil (or "auto") restores the spec table.
+function Core.SetBaseOverride(value)
+    local cfg = Core.GetConfig()
+    if value == nil or value == "auto" then
+        cfg.baseOverride = nil
+        Core.Refresh("base:auto")
+        return true
+    end
+    local n = tonumber(value)
+    if n == nil or n ~= n then return false, "invalid-value" end
+    return Core.SetConfig("baseOverride", n)
 end
 
 -------------------------------------------------------------------------------
@@ -586,12 +646,9 @@ function Core.NotifyError(reason)
     end
 end
 
---- Optional change notifications (chatFeedback).
-function Core.NotifyChange(target, previous)
-    local cfg = Core.db
-    if not cfg or not cfg.chatFeedback then return end
-    Output(Core.L("CHAT_CHANGED"):format(target, previous or 0))
-end
+--- Change notifications are intentionally gone: the addon should be invisible
+--- while it works. `/asq status` still reports how often it applied a value.
+--- Errors (see NotifyError) are the only thing that ever speaks up.
 
 -------------------------------------------------------------------------------
 --  Execution
@@ -662,7 +719,6 @@ function Core.Execute(action, snap)
             cfg.stats.lastError = nil
             Core.state = Core.STATE.APPLIED
             Core.stateReason = nil
-            Core.NotifyChange(applied or action.target, current)
         else
             -- Ownership is kept so the value can still be restored later.
             SetError(err)
@@ -676,9 +732,6 @@ function Core.Execute(action, snap)
             cfg.ownership = nil
             Core.state = Core.STATE.DISABLED
             Core.stateReason = nil
-            if cfg.chatFeedback then
-                Output(Core.L("CHAT_RESTORED"):format(action.value))
-            end
         else
             -- Keep ownership: the next refresh (or logout) retries.
             SetError(err)
@@ -701,9 +754,12 @@ function Core.Refresh(reason)
         Core.state = Core.STATE.IDLE
         return
     end
-    local cfg = Core.GetConfig()
     local snap = Core.Snapshot()
-    local action = Core.Decide(cfg, snap)
+    -- Feed the tracker first: this refresh's margin and hysteresis come from
+    -- the connection as measured so far, not from a number a player typed.
+    Core.TrackLatency(snap)
+    local options = Core.EffectiveOptions()
+    local action = Core.Decide(options, snap)
     local result = Core.Execute(action, snap)
     -- A deferred or failed restore must keep retrying even after the addon is
     -- switched off, so the timer follows the work, not just the switch.
@@ -798,6 +854,14 @@ function Core.GetStatus()
         importedFrom = cfg.importedFrom,
         refreshSeconds = Core.REFRESH_SECONDS,
         reason = Core.lastReason,
+        -- What the algorithm decided for itself (no longer player settings).
+        baseOverride = cfg.baseOverride,
+        margin = select(2, Latency.Describe(Core.latency)),
+        hysteresis = select(3, Latency.Describe(Core.latency)),
+        jitter = Latency.Jitter(Core.latency),
+        smoothed = Latency.Value(Core.latency),
+        samples = Latency.Count(Core.latency),
+        stable = Latency.IsStable(Core.latency),
     }
 end
 
@@ -884,6 +948,9 @@ local HANDLERS = {
     PLAYER_ENTERING_WORLD = function()
         if not Core.initialized then Core.GetConfig() end
         Core.inWorld = true
+        -- A new session/zoning means a new connection context: old samples
+        -- would otherwise keep a stale margin alive.
+        Latency.Reset(Core.latency)
         Core.Refresh("enter-world")
         if Core.GetConfig().enabled then
             Core.ScheduleWarmup()

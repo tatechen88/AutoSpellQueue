@@ -401,18 +401,6 @@ local function AddRowHint(row, key)
     return hint
 end
 
-local function AddSectionHeader(parent, y, key)
-    local header = NewText(parent, "GameFontNormalSmall")
-    header:SetPoint("TOPLEFT", parent, "TOPLEFT", 2, y)
-    header:SetText("|cff0cd29f" .. L(key) .. "|r")
-    header:SetJustifyH("LEFT")
-    return y - 22
-end
-
--------------------------------------------------------------------------------
---  Widgets: toggle / stepper / cycle
--------------------------------------------------------------------------------
-
 --- Toggle row: right aligned switch plus a localised on/off word.
 local function AddToggle(parent, y, labelKey, get, set, hintKey)
     -- Hinted rows are two lines: label on top, hint underneath.
@@ -439,145 +427,6 @@ local function AddToggle(parent, y, labelKey, get, set, hintKey)
     end)
 
     return row, nextY
-end
-
---- Numeric row: [-] value [+]. The core re-validates and clamps afterwards, so
---- the display always shows the sanitised value.
-local function AddStepper(parent, y, labelKey, low, high, step, get, set, unitKey)
-    local row, nextY = AddRow(parent, y)
-    AddRowLabel(row, labelKey)
-
-    local plus = NewButton(row, 26, 22, L("VALUE_PLUS"))
-    plus:SetPoint("RIGHT", -12, 0)
-
-    local value = NewText(row, "GameFontHighlight")
-    value:SetPoint("RIGHT", plus, "LEFT", -8, 0)
-    value:SetWidth(84)
-    value:SetJustifyH("RIGHT")
-    value:SetWordWrap(false)
-
-    local minus = NewButton(row, 26, 22, L("VALUE_MINUS"))
-    minus:SetPoint("RIGHT", value, "LEFT", -8, 0)
-
-    local function Update()
-        local n = NumText(get()) or low
-        if unitKey then
-            value:SetText(Format(unitKey, n))
-        else
-            value:SetText(tostring(n))
-        end
-    end
-
-    local function Nudge(delta)
-        set(Clamp((NumText(get()) or low) + delta, low, high))
-        Update()
-        RefreshUI()
-    end
-
-    minus:SetScript("OnClick", function() Nudge(-step) end)
-    plus:SetScript("OnClick", function() Nudge(step) end)
-
-    AddUpdater(Update)
-    Update()
-    return row, nextY
-end
-
---- Cycle row: a button that walks a fixed list of values.
---  entries = { { value = "auto", key = "BASE_MODE_AUTO" }, ... }
---  An entry may carry `label` instead of `key` (LibSharedMedia font names).
-local function AddCycle(parent, y, labelKey, entries, get, set, width)
-    local row, nextY = AddRow(parent, y)
-    AddRowLabel(row, labelKey)
-
-    local button = NewButton(row, width or 200, 24, "")
-    button:SetPoint("RIGHT", -12, 0)
-    AttachTooltip(button, L(labelKey), L("TOOLTIP_CLICK_CYCLE"))
-
-    local function EntryLabel(entry)
-        if entry.key then return L(entry.key) end
-        if entry.label then return entry.label end
-        return tostring(entry.value)
-    end
-
-    local function EntryFor(value)
-        for index = 1, #entries do
-            if entries[index].value == value then return entries[index] end
-        end
-        return nil
-    end
-
-    local function Update()
-        local entry = EntryFor(get())
-        if entry then
-            button._text:SetText(EntryLabel(entry))
-        else
-            button._text:SetText(tostring(get()))
-        end
-    end
-
-    button:SetScript("OnClick", function()
-        if #entries == 0 then return end
-        local current = get()
-        local index = 1
-        for i = 1, #entries do
-            if entries[i].value == current then
-                index = i
-            end
-        end
-        index = (index % #entries) + 1
-        set(entries[index].value)
-        Update()
-        RefreshUI()
-    end)
-
-    AddUpdater(Update)
-    Update()
-    return row, nextY
-end
-
--------------------------------------------------------------------------------
---  Font list (fixed defaults plus LibSharedMedia when it is installed)
--------------------------------------------------------------------------------
-local fontEntries
-
-local function GetFontEntries()
-    if fontEntries then return fontEntries end
-    fontEntries = {
-        { value = "Fonts\\FRIZQT__.TTF", key = "FONT_FRIZQUAD" },
-        { value = "Fonts\\ARIALN.TTF", key = "FONT_ARIALN" },
-        { value = "Fonts\\MORPHEUS.TTF", key = "FONT_MORPHEUS" },
-        { value = "Fonts\\skurri.ttf", key = "FONT_SKURRI" },
-    }
-    local libStub = _G.LibStub
-    local lsm = libStub and libStub("LibSharedMedia-3.0", true)
-    if lsm and lsm.List then
-        local ok, names = pcall(lsm.List, lsm, "font")
-        if ok and type(names) == "table" then
-            for index = 1, #names do
-                local name = names[index]
-                if type(name) == "string" and name ~= "" then
-                    fontEntries[#fontEntries + 1] = { value = name, label = name }
-                end
-            end
-        end
-    end
-    return fontEntries
-end
-
-local function ResolveFontPath(value)
-    if type(value) == "string" and value ~= "" then
-        local lower = string.lower(value)
-        if string.sub(lower, 1, 6) == "fonts\\" or string.sub(lower, 1, 10) == "interface\\" then
-            return value
-        end
-        local libStub = _G.LibStub
-        local lsm = libStub and libStub("LibSharedMedia-3.0", true)
-        if lsm and lsm.Fetch then
-            local ok, path = pcall(lsm.Fetch, lsm, "font", value)
-            if ok and type(path) == "string" and path ~= "" then return path end
-        end
-    end
-    return "Fonts\\FRIZQT__.TTF"
 end
 
 -------------------------------------------------------------------------------
@@ -626,19 +475,13 @@ local function UpdateStatusBar()
     local label = statusBar._text
     label:SetText(text)
     label:SetTextColor(color[1], color[2], color[3])
-    local size = NumText(Cfg().statusFontSize) or 12
-    statusBar:SetSize(math.max(64, (label:GetStringWidth() or 40) + 26), math.max(22, size + 12))
+    statusBar:SetSize(math.max(64, (label:GetStringWidth() or 40) + 26), 22)
 end
 
+--- The bar deliberately uses the client's own small font (inherited at
+--- creation) instead of carrying font and size settings of its own: it then
+--- follows the game's font and UI scale for free, and there is one less knob.
 local function ApplyStatusBarStyle()
-    if not statusBar then return end
-    local size = NumText(Cfg().statusFontSize) or 12
-    local path = ResolveFontPath(Cfg().statusFont)
-    local label = statusBar._text
-    local ok = pcall(label.SetFont, label, path, size, "OUTLINE")
-    if not ok then
-        pcall(label.SetFont, label, "Fonts\\FRIZQT__.TTF", size, "OUTLINE")
-    end
     UpdateStatusBar()
 end
 
@@ -1033,12 +876,6 @@ local function BuildUI(contentParent)
         if status.importedFrom then
             hint = hint .. "  " .. L("HINT_IMPORTED")
         end
-        -- A cap below 50 ms pins the queue window at (almost) nothing, which
-        -- effectively switches spell queueing off. Warn instead of silently
-        -- wrecking the player's rotation.
-        if (NumText(refreshCfg and refreshCfg.maxWindow) or 400) < 50 then
-            hint = hint .. "  " .. L("HINT_MAX_TOO_LOW")
-        end
         if state ~= "disabled" and state ~= "error" and state ~= "unavailable" then
             local latency = NumText(status.latency) or 0
             local world = NumText(status.world) or 0
@@ -1051,242 +888,37 @@ local function BuildUI(contentParent)
         hintLine:SetTextColor(hintColor[1], hintColor[2], hintColor[3], hintColor[4])
     end)
 
-    -- Advanced fold --------------------------------------------------------
-    local advancedButton = NewButton(content, INNER_WIDTH, 28, "")
-    advancedButton:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
-    AttachTooltip(advancedButton, function()
-        return Cfg().showAdvanced and L("ADVANCED_HIDE") or L("ADVANCED_SHOW")
-    end, L("TOOLTIP_ADVANCED"))
-    advancedButton:SetScript("OnClick", function()
-        Core.SetConfig("showAdvanced", not Cfg().showAdvanced, { noRefresh = true })
-        if applyAdvancedView then applyAdvancedView() end
-        RefreshUI()
-    end)
-    AddUpdater(function()
-        if Cfg().showAdvanced then
-            advancedButton._text:SetText(L("ADVANCED_HIDE"))
-        else
-            advancedButton._text:SetText(L("ADVANCED_SHOW"))
-        end
-    end)
-
-    local advancedTop = y - 36
-    local advancedHeight = 0
-
-    local advanced = CreateFrame("Frame", nil, content)
-    advanced:SetPoint("TOPLEFT", content, "TOPLEFT", 0, advancedTop)
-    advanced:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, advancedTop)
-    advanced:SetHeight(10)
-
-    local ay = 0
+    -- Display ---------------------------------------------------------------
+    -- That is the whole panel: the algorithm configures itself, so the only
+    -- thing left for the player to decide is whether the readout is drawn.
     local row
-
-    -- Calculation ----------------------------------------------------------
-    ay = AddSectionHeader(advanced, ay, "SECTION_CALC")
-
-    row, ay = AddCycle(advanced, ay, "SETTING_BASE_MODE", {
-        { value = "auto", key = "BASE_MODE_AUTO" },
-        { value = "manual", key = "BASE_MODE_MANUAL" },
-    }, function() return Cfg().baseMode end,
-        function(value) Core.SetConfig("baseMode", value) end, 200)
-
-    do
-        local manualRow
-        manualRow, ay = AddStepper(advanced, ay, "SETTING_MANUAL_BASE", 50, 400, 5,
-            function() return Cfg().manualBase end,
-            function(value) Core.SetConfig("manualBase", value) end, "UNIT_MS")
-        AddUpdater(function()
-            manualRow:SetShown(Cfg().baseMode == "manual")
-        end)
-    end
-
-    row, ay = AddToggle(advanced, ay, "SETTING_ADAPTIVE",
-        function() return Cfg().adaptive ~= false end,
-        function(value) Core.SetConfig("adaptive", value) end)
-
-    row, ay = AddStepper(advanced, ay, "SETTING_MARGIN", 0, 300, 5,
-        function() return Cfg().margin end,
-        function(value) Core.SetConfig("margin", value) end, "UNIT_MS")
-
-    row, ay = AddStepper(advanced, ay, "SETTING_MIN", 0, 400, 5,
-        function() return Cfg().minWindow end,
-        function(value) Core.SetConfig("minWindow", value) end, "UNIT_MS")
-
-    row, ay = AddStepper(advanced, ay, "SETTING_MAX", 50, 400, 5,
-        function() return Cfg().maxWindow end,
-        function(value) Core.SetConfig("maxWindow", value) end, "UNIT_MS")
-
-    row, ay = AddStepper(advanced, ay, "SETTING_HYSTERESIS", 0, 100, 1,
-        function() return Cfg().hysteresis end,
-        function(value) Core.SetConfig("hysteresis", value) end, "UNIT_MS")
-
-    row, ay = AddCycle(advanced, ay, "SETTING_LATENCY_SOURCE", {
-        { value = "world", key = "LATENCY_WORLD" },
-        { value = "home", key = "LATENCY_HOME" },
-        { value = "avg", key = "LATENCY_AVG" },
-        { value = "max", key = "LATENCY_MAX" },
-    }, function() return Cfg().latencySource end,
-        function(value) Core.SetConfig("latencySource", value) end, 220)
-
-    -- Status bar -----------------------------------------------------------
-    ay = ay - 8
-    ay = AddSectionHeader(advanced, ay, "SECTION_STATUS_BAR")
-
-    row, ay = AddToggle(advanced, ay, "SETTING_SHOW_STATUS",
+    row, y = AddToggle(content, y, "SETTING_SHOW_STATUS",
         function() return Cfg().showStatus end,
         function(value)
             Core.SetConfig("showStatus", value, { noRefresh = true })
             CreateStatusBar()
             ApplyStatusBarVisibility()
-            if value then ApplyStatusBarStyle() end
-        end)
-
-    row, ay = AddCycle(advanced, ay, "SETTING_STATUS_FONT", GetFontEntries(),
-        function() return Cfg().statusFont end,
-        function(value)
-            Core.SetConfig("statusFont", value, { noRefresh = true })
-            ApplyStatusBarStyle()
-        end, 240)
-
-    row, ay = AddStepper(advanced, ay, "SETTING_STATUS_FONT_SIZE", 8, 32, 1,
-        function() return Cfg().statusFontSize end,
-        function(value)
-            Core.SetConfig("statusFontSize", value, { noRefresh = true })
-            ApplyStatusBarStyle()
         end)
 
     do
         local positionRow
-        positionRow, ay = AddRow(advanced, ay, 30)
+        positionRow, y = AddRow(content, y, 30)
         local positionButton = NewButton(positionRow, 180, 24, L("BUTTON_RESET_POSITION"))
         positionButton:SetPoint("LEFT", 12, 0)
         AttachTooltip(positionButton, L("BUTTON_RESET_POSITION"), L("TOOLTIP_RESET_POSITION"))
         positionButton:SetScript("OnClick", function() ResetStatusBarPosition(true) end)
     end
 
-    -- Misc -----------------------------------------------------------------
-    ay = ay - 8
-    ay = AddSectionHeader(advanced, ay, "SECTION_MISC")
+    local footer = NewText(content, "GameFontNormalSmall")
+    footer:SetPoint("TOPLEFT", content, "TOPLEFT", 2, y - 6)
+    footer:SetPoint("TOPRIGHT", content, "TOPRIGHT", -2, y - 6)
+    footer:SetJustifyH("LEFT")
+    footer:SetWordWrap(true)
+    footer:SetTextColor(1, 1, 1, 0.40)
+    footer:SetText(L("PANEL_FOOTER"))
+    y = y - 6 - math.max(16, footer:GetStringHeight() or 16) - 8
 
-    row, ay = AddToggle(advanced, ay, "SETTING_CHAT_FEEDBACK",
-        function() return Cfg().chatFeedback end,
-        function(value) Core.SetConfig("chatFeedback", value) end,
-        "SETTING_CHAT_FEEDBACK_HINT")
-
-    do
-        local actionsRow
-        actionsRow, ay = AddRow(advanced, ay, 30)
-
-        local refreshButton = NewButton(actionsRow, 180, 24, L("BUTTON_REFRESH"))
-        refreshButton:SetPoint("LEFT", 12, 0)
-        AttachTooltip(refreshButton, L("BUTTON_REFRESH"), L("TOOLTIP_REFRESH"))
-        refreshButton:SetScript("OnClick", function()
-            Core.Refresh("ui")
-            PullState()
-            UpdateStatusBar()
-            RefreshUI()
-            Say(L("MSG_REFRESHED"))
-        end)
-
-        local armed = false
-        local resetButton = NewButton(actionsRow, 180, 24, L("BUTTON_RESET_SETTINGS"))
-        resetButton:SetPoint("RIGHT", -12, 0)
-        AttachTooltip(resetButton, L("BUTTON_RESET_SETTINGS"), L("TOOLTIP_RESET_SETTINGS"))
-        local function Disarm()
-            armed = false
-            resetButton._text:SetText(L("BUTTON_RESET_SETTINGS"))
-        end
-        resetButton:SetScript("OnClick", function()
-            if not armed then
-                armed = true
-                resetButton._text:SetText(L("BUTTON_RESET_SETTINGS_CONFIRM"))
-                if C_Timer and C_Timer.After then
-                    C_Timer.After(4, Disarm)
-                end
-                return
-            end
-            Disarm()
-            Core.ResetSettings()
-            PullState()
-            if applyAdvancedView then applyAdvancedView() end
-            ApplyStatusBarStyle()
-            ApplyStatusBarVisibility()
-            UpdateStatusBar()
-            RefreshUI()
-            Say(L("MSG_RESET_DONE"))
-        end)
-    end
-
-    -- Diagnostics ----------------------------------------------------------
-    ay = ay - 8
-    ay = AddSectionHeader(advanced, ay, "SECTION_DIAGNOSTICS")
-
-    local function AddDiagLine(labelKey)
-        local line = CreateFrame("Frame", nil, advanced)
-        line:SetPoint("TOPLEFT", advanced, "TOPLEFT", 2, ay)
-        line:SetPoint("TOPRIGHT", advanced, "TOPRIGHT", -2, ay)
-        line:SetHeight(16)
-        local label = NewText(line, "GameFontNormalSmall")
-        label:SetPoint("LEFT", 0, 0)
-        label:SetText(L(labelKey))
-        label:SetTextColor(1, 1, 1, 0.45)
-        local value = NewText(line, "GameFontNormalSmall")
-        value:SetPoint("RIGHT", 0, 0)
-        value:SetJustifyH("RIGHT")
-        value:SetText(L("VALUE_PLACEHOLDER"))
-        value:SetTextColor(1, 1, 1, 0.75)
-        ay = ay - 16
-        return value
-    end
-
-    local ownedLine = AddDiagLine("LABEL_OWNED")
-    local baselineLine = AddDiagLine("LABEL_BASELINE")
-    local lastAppliedLine = AddDiagLine("LABEL_LAST_APPLIED")
-    local applyCountLine = AddDiagLine("LABEL_APPLY_COUNT")
-    local repairsLine = AddDiagLine("LABEL_REPAIRS")
-    local refreshLine = AddDiagLine("LABEL_REFRESH")
-    local cvarLine = AddDiagLine("LABEL_CVAR")
-    local errorLine = AddDiagLine("LABEL_LAST_ERROR")
-
-    AddUpdater(function()
-        local status = refreshStatus
-        ownedLine:SetText(status.owned and L("VALUE_YES") or L("VALUE_NO"))
-        baselineLine:SetText(MsText(status.baseline))
-        lastAppliedLine:SetText(MsText(status.lastApplied))
-        applyCountLine:SetText(tostring(NumText(status.applyCount) or 0))
-        repairsLine:SetText(tostring(NumText(status.repairs) or 0))
-        refreshLine:SetText(Format("UNIT_SECONDS", NumText(status.refreshSeconds) or 0))
-        cvarLine:SetText(CvarText(status.cvarInfo))
-
-        local err = status.lastError
-        if type(err) == "string" and err ~= "" then
-            local key = (Core.REASON_KEY and Core.REASON_KEY[err]) or err
-            local text = L(key)
-            local age = NumText(status.lastErrorAt)
-            if age then
-                local seconds = math.max(0, math.floor(Core.Now() - age))
-                text = text .. "  (" .. Format("HINT_ERROR_AGE", seconds) .. ")"
-            end
-            errorLine:SetText(text)
-            errorLine:SetTextColor(STATE_COLOR.error[1], STATE_COLOR.error[2], STATE_COLOR.error[3])
-        else
-            errorLine:SetText(L("VALUE_NONE"))
-            errorLine:SetTextColor(1, 1, 1, 0.75)
-        end
-    end)
-
-    advancedHeight = -ay + 6
-    advanced:SetHeight(advancedHeight)
-
-    -- The fold only changes visibility and the content height: no rebuild.
-    local mainHeight = -advancedTop
-    applyAdvancedView = function()
-        local show = Cfg().showAdvanced and true or false
-        advanced:SetShown(show)
-        SetContentHeight(content, mainHeight + (show and (advancedHeight + 10) or 0) + 6)
-    end
-
-    applyAdvancedView()
+    SetContentHeight(content, -y + 6)
     built = true
     RefreshUI()
 end
@@ -1426,6 +1058,9 @@ local function DiagnosticLines(status)
     Add("LABEL_LATENCY", MsText(status.latency))
     Add("LABEL_WORLD", MsText(status.world))
     Add("LABEL_HOME", MsText(status.home))
+    -- 算法自己决定的量：报 bug 时这两行走查「为什么是这个数」。
+    Add("LABEL_MARGIN", MsText(status.margin))
+    Add("LABEL_JITTER", MsText(status.jitter))
     Add("LABEL_CONTEXT", ContextText(status.context))
     Add("LABEL_SPEC", SpecText(status) .. " · " .. RoleText(status.role)
         .. " · " .. tostring(status.classFile or "?"))
@@ -1464,8 +1099,6 @@ end
 local function DoReset()
     Core.ResetSettings()
     PullState()
-    if applyAdvancedView then applyAdvancedView() end
-    ApplyStatusBarStyle()
     ApplyStatusBarVisibility()
     UpdateStatusBar()
     RefreshUI()
@@ -1491,6 +1124,40 @@ local function HandleSlash(input)
     end
     if command == "unlock" or command == "resetpos" then
         ResetStatusBarPosition(true)
+        return
+    end
+    if string.sub(command, 1, 4) == "base" then
+        -- Escape hatch for the rare spec where the table's feel value is wrong.
+        -- Deliberately command-only: it must not become a panel setting again.
+        local argument = string.gsub(string.sub(command, 5), "^%s+", "")
+        if argument == "" then
+            local current = Core.GetConfig().baseOverride
+            if current then
+                Say(Format("CHAT_BASE_CURRENT", current))
+            else
+                Say(L("CHAT_BASE_AUTO"))
+            end
+            return
+        end
+        if argument == "auto" then
+            Core.SetBaseOverride(nil)
+            Say(L("CHAT_BASE_AUTO"))
+            return
+        end
+        -- Must be validated here: tonumber("abc") is nil, and nil means "auto"
+        -- to SetBaseOverride, so passing it through would silently reset the
+        -- override instead of telling the player the input was wrong.
+        local numeric = tonumber(argument)
+        if numeric == nil then
+            Say(L("CHAT_BASE_INVALID"))
+            return
+        end
+        local ok = Core.SetBaseOverride(numeric)
+        if ok then
+            Say(Format("CHAT_BASE_SET", NumText(Core.GetConfig().baseOverride) or 0))
+        else
+            Say(L("CHAT_BASE_INVALID"))
+        end
         return
     end
     PrintHelp()

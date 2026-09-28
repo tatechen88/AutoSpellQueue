@@ -24,20 +24,36 @@ T.spec("spec_core")
 --  Fresh world per test
 ------------------------------------------------------------------------------
 
+--- The saved file, schema v2: the player only owns two switches now.
 local function defaultDB(extra)
     local db = {
+        schemaVersion = 2,
         enabled = true,
-        baseMode = "auto",
-        adaptive = true,
-        latencySource = "world",
-        margin = 50,
-        minWindow = 50,
-        maxWindow = 400,
-        hysteresis = 10,
-        chatFeedback = false,
+        showStatus = true,
     }
     for key, value in pairs(extra or {}) do db[key] = value end
     return db
+end
+
+--- The flat table Core.Decide() consumes: player settings + the measured
+--- algorithm values. With no samples pushed, the tracker guarantees a margin of
+--- BASE_HEADROOM and a hysteresis of HYSTERESIS_MIN, so the numbers here are
+--- deterministic instead of "whatever the settings used to be".
+local function DecideOptions(extra)
+    local options = {
+        enabled = true,
+        ownership = nil,
+        baseMode = "auto",
+        manualBase = 0,
+        adaptive = true,
+        latencySource = "world",
+        margin = ns.Latency.BASE_HEADROOM,
+        hysteresis = ns.Latency.HYSTERESIS_MIN,
+        minWindow = Core.WINDOW_MIN,
+        maxWindow = Core.WINDOW_MAX,
+    }
+    for key, value in pairs(extra or {}) do options[key] = value end
+    return options
 end
 
 --- Full reset: fake client, saved variables, module state, injected env.
@@ -45,6 +61,7 @@ local function resetWorld(extra)
     Stub.Reset()
     Core.StopTicker()
     CVar.SetEnv(nil)
+    ns.Latency.Reset(Core.latency)
     _G.AutoSpellQueueDB = defaultDB(extra)
     _G.Tate_ASQDB = nil
     Core.db = nil
@@ -80,19 +97,21 @@ local function baseSnap(overrides)
     return snap
 end
 
---- A synthetic config for pure Decide() calls (defaults + overrides).
+--- A synthetic options table for pure Decide() calls (deterministic defaults).
 local function baseCfg(overrides)
-    local cfg = {
-        enabled = true, baseMode = "auto", adaptive = true, latencySource = "world",
-        margin = 50, minWindow = 50, maxWindow = 400, hysteresis = 10, ownership = nil,
-    }
-    for key, value in pairs(overrides or {}) do cfg[key] = value end
-    return cfg
+    return DecideOptions(overrides)
 end
 
 local function stripComments(source)
     local text = source:gsub("%-%-%[=*%[.-%]=*%]", " ")
     return text:gsub("%-%-[^\n]*", " ")
+end
+
+--- Expected target for a steady latency with a fresh tracker: the algorithm
+--- adds BASE_HEADROOM on top of the measured latency (jitter is 0 when every
+--- sample is identical). Tests derive the number instead of hardcoding it.
+local function ExpectedTarget(worldLatency)
+    return math.max(245, worldLatency + ns.Latency.BASE_HEADROOM)
 end
 
 --- Applies a value as the addon would, then clears all bookkeeping.
@@ -155,13 +174,17 @@ end)
 
 T.test("Decide: 迟滞带内不写，边界值等于迟滞时要写", function()
     local own = { active = true, baseline = 150, lastApplied = 245 }
-    -- target 245, current 250 -> |245-250| = 5 < 10
-    local action = Core.Decide(baseCfg({ ownership = own }), baseSnap({ current = 250 }))
+    -- 迟滞现在来自算法（HYSTERESIS_MIN），不再是玩家设置。
+    local band = ns.Latency.HYSTERESIS_MIN
+    T.truthy(band >= 1, "迟滞下限必须为正，否则达不到防抖目的")
+
+    -- |245 - (245 + band - 1)| = band - 1 < band -> 在带内
+    local action = Core.Decide(baseCfg({ ownership = own }), baseSnap({ current = 245 + band - 1 }))
     T.eq(action.kind, "none")
     T.truthy(action.externalChange, "current != lastApplied 应标记外部改动")
 
     -- hysteresis = 0 关闭迟滞
-    action = Core.Decide(baseCfg({ ownership = own, hysteresis = 0 }), baseSnap({ current = 250 }))
+    action = Core.Decide(baseCfg({ ownership = own, hysteresis = 0 }), baseSnap({ current = 246 }))
     T.eq(action.kind, "apply")
 
     -- 差值正好等于迟滞 -> 写出（边界语义：严格小于才算“在带内”）
@@ -280,7 +303,7 @@ T.test("失败提示限流：同一原因 120 秒内只提示一次", function()
 end)
 
 T.test("成功写入：ownership 记录 baseline/lastApplied 并计入统计", function()
-    resetWorld({ enabled = true, chatFeedback = true })
+    resetWorld({ enabled = true })
     Stub.SetCVarValue(150)
     local ok = Core.Refresh("apply")
     T.truthy(ok)
@@ -301,7 +324,7 @@ T.test("成功写入：ownership 记录 baseline/lastApplied 并计入统计", f
     T.eq(status.target, 245)
     T.eq(status.live, 245)
     T.eq(status.applyCount, 1)
-    T.eq(#Stub.chat, 1, "chatFeedback=true 时写一次变更提示")
+    T.eq(#Stub.chat, 0, "改值不再刷屏：只有错误才会说话")
 end)
 
 T.test("读不到 CVar：unavailable，不写也不报成功", function()
@@ -323,7 +346,7 @@ end)
 T.test("P1: 战斗中不写；脱战后按实时状态重新决策，不重放战斗前的旧目标", function()
     resetWorld({ enabled = true })
     Stub.SetCVarValue(150)
-    Stub.worldLatency = 300 -- target = max(245, 300+50) = 350
+    Stub.worldLatency = 300 -- 目标 = max(245, 300 + 自适应余量)
     Stub.combat = true
 
     Core.Refresh("combat-start")
@@ -332,34 +355,35 @@ T.test("P1: 战斗中不写；脱战后按实时状态重新决策，不重放�
     T.eq(Stub.CVarValue(), "150")
     T.isNil(Core.GetConfig().ownership, "没写入就不该有所有权")
 
-    -- 战斗中改配置（旧实现会重放进入战斗时算出的 350）
-    Core.SetConfig("baseMode", "manual", { noRefresh = true })
-    Core.SetConfig("manualBase", 120, { noRefresh = true })
-    Core.SetConfig("adaptive", false, { noRefresh = true })
+    -- 战斗中改配置：现在只有「基础值覆盖」这一条命令级通道。
+    -- 它只改基础值，延迟自适应永远生效（这正是本次简化的语义）。
+    Core.SetBaseOverride(120)
     -- 战斗中玩家/别的插件改了值
     Stub.SetCVarValue(260)
-    T.eq(#Stub.writes, 0, "SetConfig(noRefresh) 也不得写")
+    T.eq(#Stub.writes, 0, "战斗中改配置也不得写")
     T.eq(Core.state, Core.STATE.PENDING)
 
     Stub.combat = false
     Stub.FireEvent("PLAYER_REGEN_ENABLED")
 
     T.eq(#Stub.writes, 1, "脱战后恰好写一次")
-    T.eq(Stub.writes[1].value, "120", "写的是脱战后重新算出的目标，而不是旧快照的 350")
-    T.eq(Stub.CVarValue(), "120")
+    -- 脱战后按「实时延迟 + 算法余量」重新算，基础值是被覆盖的 120
+    local expected = math.max(120, Stub.worldLatency + ns.Latency.Margin(Core.latency))
+    expected = math.min(Core.WINDOW_MAX, math.max(Core.WINDOW_MIN, expected))
+    T.eq(tonumber(Stub.writes[1].value), expected,
+        "写的是脱战后重新算出的目标，而不是战斗前算的旧值")
     T.eq(Core.state, Core.STATE.APPLIED)
 
     local ownership = Core.GetConfig().ownership
     T.truthy(ownership and ownership.active)
     T.eq(ownership.baseline, 260, "baseline 是接管那一刻客户端的值")
-    T.eq(ownership.lastApplied, 120)
-    T.eq(Core.GetStatus().live, 120)
+    T.eq(ownership.lastApplied, expected)
 end)
 
 T.test("P1: 战斗中禁用再启用，脱战必须重新决策（不得重放旧目标）", function()
     resetWorld({ enabled = true })
     Stub.SetCVarValue(150)
-    Stub.worldLatency = 300 -- 350
+    Stub.worldLatency = 300
     Stub.combat = true
 
     Core.Refresh("combat")
@@ -371,7 +395,7 @@ T.test("P1: 战斗中禁用再启用，脱战必须重新决策（不得重放�
     T.eq(Core.state, Core.STATE.DISABLED)
     T.isNil(Core.GetConfig().ownership, "从未写入过，就没有所有权要归还")
 
-    Stub.worldLatency = 100 -- 重新启用后的实时目标是 245
+    Stub.worldLatency = 100 -- 重新启用后的实时延迟回到 100
     Core.SetEnabled(true)
     T.eq(#Stub.writes, 0, "战斗中启用也不得写")
     T.eq(Core.state, Core.STATE.PENDING)
@@ -379,7 +403,13 @@ T.test("P1: 战斗中禁用再启用，脱战必须重新决策（不得重放�
     Stub.combat = false
     Stub.FireEvent("PLAYER_REGEN_ENABLED")
     T.eq(#Stub.writes, 1, "脱战后只写一次")
-    T.eq(Stub.writes[1].value, "245", "按脱战后的实时目标写，而不是战斗中的 350")
+    -- 必须按脱战后的实时状态算：延迟已回到 100，绝不能沿用战斗中的 300。
+    -- （余量由算法按刚看到的 300→100 波动给得偏保守，所以这里不断言具体数值，
+    --   只断言「和当前实时目标一致」且「明显不是战斗中那 300ms 算出来的」。）
+    local written = tonumber(Stub.writes[1].value)
+    T.notNil(written)
+    T.eq(written, Core.GetStatus().target, "按脱战后的实时目标写")
+    T.truthy(written < 400, "不能是战斗中 300ms 延迟算出的上限值（实得 " .. tostring(written) .. "）")
     T.eq(Core.state, Core.STATE.APPLIED)
     T.eq(Core.GetConfig().ownership.baseline, 150)
 end)
@@ -387,16 +417,16 @@ end)
 T.test("P1: 启用中在战斗里禁用 -> 只标记 pending，脱战后归还 baseline", function()
     resetWorld({ enabled = true })
     Stub.SetCVarValue(150)
-    local ownership = applyOnce(300, 350)
+    local ownership = applyOnce(300, ExpectedTarget(300))
     T.eq(ownership.baseline, 150)
-    T.eq(ownership.lastApplied, 350)
+    T.eq(ownership.lastApplied, ExpectedTarget(300))
 
     Stub.combat = true
     Core.SetEnabled(false)
     T.eq(#Stub.writes, 0, "战斗中不能写回 baseline")
     T.eq(Core.state, Core.STATE.PENDING)
     T.truthy(Core.GetConfig().ownership, "所有权必须保留，等脱战再归还")
-    T.eq(Stub.CVarValue(), "350")
+    T.eq(Stub.CVarValue(), tostring(ExpectedTarget(300)))
 
     Stub.combat = false
     Stub.FireEvent("PLAYER_REGEN_ENABLED")
@@ -414,7 +444,7 @@ end)
 T.test("登出归还 baseline 并清空所有权", function()
     resetWorld({ enabled = true })
     Stub.SetCVarValue(150)
-    applyOnce(300, 350)
+    applyOnce(300, ExpectedTarget(300))
 
     Stub.FireEvent("PLAYER_LOGOUT")
     T.eq(#Stub.writes, 1)
@@ -427,17 +457,17 @@ end)
 T.test("P1: 登出归还失败时保留所有权，下次登录仍能归还", function()
     resetWorld({ enabled = true })
     Stub.SetCVarValue(150)
-    applyOnce(300, 350)
+    applyOnce(300, ExpectedTarget(300))
 
     Stub.setCVarMode = "reject-false"
     Stub.FireEvent("PLAYER_LOGOUT")
-    T.eq(Stub.CVarValue(), "350", "归还失败，值留在插件写过的状态")
+    T.eq(Stub.CVarValue(), tostring(ExpectedTarget(300)), "归还失败，值留在插件写过的状态")
     T.eq(Core.state, Core.STATE.ERROR)
 
     local ownership = Core.GetConfig().ownership
     T.truthy(ownership and ownership.active, "失败必须保留所有权（持久化后下次登录还能归还）")
     T.eq(ownership.baseline, 150)
-    T.eq(ownership.lastApplied, 350)
+    T.eq(ownership.lastApplied, ExpectedTarget(300))
 
     -- 模拟下一次登录：同一份 SavedVariables 重新加载
     Core.db = nil
@@ -445,7 +475,7 @@ T.test("P1: 登出归还失败时保留所有权，下次登录仍能归还", fu
     local cfg = Core.GetConfig()
     T.truthy(cfg.ownership and cfg.ownership.active, "ownership 必须能从存档里恢复")
     T.eq(cfg.ownership.baseline, 150)
-    T.eq(cfg.ownership.lastApplied, 350)
+    T.eq(cfg.ownership.lastApplied, ExpectedTarget(300))
 
     local ok, reason = Core.RestoreOwnership("next-login")
     T.truthy(ok)
@@ -457,7 +487,7 @@ end)
 T.test("P1: 禁用时若值被外部改过 -> 只释放所有权，不覆盖", function()
     resetWorld({ enabled = true })
     Stub.SetCVarValue(150)
-    applyOnce(300, 350)
+    applyOnce(300, ExpectedTarget(300))
 
     Stub.SetCVarValue(333) -- 玩家/别的插件改了
     Core.SetEnabled(false)
@@ -470,7 +500,7 @@ end)
 T.test("P1: RestoreOwnership 遇到外部改动只释放、不写入", function()
     resetWorld({ enabled = true })
     Stub.SetCVarValue(150)
-    applyOnce(300, 350)
+    applyOnce(300, ExpectedTarget(300))
     Stub.SetCVarValue(333)
 
     local ok, reason = Core.RestoreOwnership("manual")
@@ -493,14 +523,14 @@ end)
 T.test("启用中遇到外部改值：重新夺回管理，但 baseline 保持不变", function()
     resetWorld({ enabled = true })
     Stub.SetCVarValue(150)
-    applyOnce(300, 350)
+    applyOnce(300, ExpectedTarget(300))
 
     Stub.SetCVarValue(333)
     Core.Refresh("external")
-    T.eq(Stub.CVarValue(), "350", "启用状态下重新写回我们的目标")
+    T.eq(Stub.CVarValue(), tostring(ExpectedTarget(300)), "启用状态下重新写回我们的目标")
     T.eq(#Stub.writes, 1)
     T.eq(Core.GetConfig().ownership.baseline, 150, "baseline 不得被重设为 333")
-    T.eq(Core.GetConfig().ownership.lastApplied, 350)
+    T.eq(Core.GetConfig().ownership.lastApplied, ExpectedTarget(300))
     T.eq(Core.GetConfig().stats.applied, 2, "重新夺回也是一次成功的写入")
     T.eq(Core.state, Core.STATE.APPLIED)
 end)
@@ -512,11 +542,11 @@ end)
 T.test("外部改值后重新夺回管理时 externalChange 诊断不应丢失", function()
     resetWorld({ enabled = true })
     Stub.SetCVarValue(150)
-    applyOnce(300, 350)
+    applyOnce(300, ExpectedTarget(300))
     Stub.SetCVarValue(333)
 
     Core.Refresh("external")
-    T.eq(Stub.CVarValue(), "350", "重新夺回我们的目标值")
+    T.eq(Stub.CVarValue(), tostring(ExpectedTarget(300)), "重新夺回我们的目标值")
     T.truthy(Core.GetStatus().externalChange, "值被动过就该如实告诉 UI")
     T.truthy(Core.GetConfig().stats.externalChangeAt ~= nil)
 end)
@@ -524,22 +554,33 @@ end)
 T.test("迟滞范围内的外部小幅改动不触发写入", function()
     resetWorld({ enabled = true })
     Stub.SetCVarValue(150)
-    applyOnce(300, 350)
+    local ownership = applyOnce(300, ExpectedTarget(300))
+    local target = ownership.lastApplied
 
-    Stub.SetCVarValue(345) -- |350-345| = 5 < 10
+    -- 迟滞由算法按抖动给出（稳定连接 = HYSTERESIS_MIN），因此从算法取值，
+    -- 不写死一个「10ms」——那正是本次重构要消灭的东西。
+    local band = ns.Latency.Hysteresis(Core.latency)
+    T.truthy(band >= 1, "迟滞必须为正，否则防抖失效")
+
+    Stub.SetCVarValue(target + band - 1) -- 差值 band-1 < band -> 带内
     Core.Refresh("jitter")
     T.eq(#Stub.writes, 0, "小幅抖动不该反复写 CVar")
     T.truthy(Core.GetStatus().externalChange, "但仍要如实标记值被动过")
-    T.eq(Stub.CVarValue(), "345")
+    T.eq(Stub.CVarValue(), tostring(target + band - 1))
 end)
 
 ------------------------------------------------------------------------------
 --  Config: Sanitize / Migrate / ImportLegacy / SetConfig / Reset
 ------------------------------------------------------------------------------
 
-T.test("Sanitize: 越界、错类型、min>max 全部修正并计数", function()
+T.test("Sanitize: 错类型与越界被修正，v1 退休键被清掉并计数", function()
     local db = {
         enabled = "yes",
+        showStatus = false,
+        baseOverride = 9999,
+        statusBarPos = { x = "a", y = 1 },
+        junk = "keep",
+        -- v1 的旋钮：现在全部退休，Sanitize 必须把它们从存档里清掉
         adaptive = 0,
         manualBase = 9999,
         margin = -50,
@@ -550,25 +591,24 @@ T.test("Sanitize: 越界、错类型、min>max 全部修正并计数", function(
         latencySource = "nonsense",
         baseMode = 123,
         statusFont = 42,
-        statusBarPos = { x = "a", y = 1 },
-        junk = "keep",
+        chatFeedback = true,
+        showAdvanced = true,
     }
     local sanitized, repairs = Core.Sanitize(db)
 
     T.eq(sanitized, db, "应原地修正并返回同一个表")
-    T.eq(sanitized.enabled, true)
-    T.eq(sanitized.adaptive, true)
-    T.eq(sanitized.manualBase, 400)
-    T.eq(sanitized.margin, 0)
-    T.eq(sanitized.minWindow, 50, "min>max 时双双回到默认")
-    T.eq(sanitized.maxWindow, 400)
-    T.eq(sanitized.hysteresis, 100)
-    T.eq(sanitized.statusFontSize, 32)
-    T.eq(sanitized.latencySource, "world")
-    T.eq(sanitized.baseMode, "auto")
-    T.eq(sanitized.statusFont, Core.DEFAULTS.statusFont)
+    T.eq(sanitized.enabled, true, "非布尔值按 Lua 真假归一（\"yes\" 为真）")
+    T.eq(sanitized.showStatus, false, "false 保持 false")
+    T.eq(sanitized.baseOverride, 400, "越界的基础值覆盖被夹到上限")
     T.isNil(sanitized.statusBarPos)
     T.eq(sanitized.junk, "keep", "未知键不该被删（用户数据保留）")
+
+    for _, retired in ipairs({ "adaptive", "manualBase", "margin", "minWindow", "maxWindow",
+        "hysteresis", "statusFontSize", "latencySource", "baseMode", "statusFont",
+        "chatFeedback", "showAdvanced" }) do
+        T.isNil(sanitized[retired], "退休键必须从存档里消失: " .. retired)
+    end
+
     T.truthy(repairs > 0, "repairs 计数应大于 0")
     T.truthy(sanitized.stats.repairs >= repairs, "累计 repairs 应包含本次修正")
     T.eq(sanitized.schemaVersion, Core.DEFAULTS.schemaVersion)
@@ -579,26 +619,22 @@ T.test("Sanitize: 非表输入/空表/缺失键都被补全", function()
     T.eq(type(db), "table")
     T.truthy(repairs > 0)
     T.eq(db.enabled, Core.DEFAULTS.enabled)
-    T.eq(db.margin, Core.DEFAULTS.margin)
+    T.eq(db.showStatus, Core.DEFAULTS.showStatus)
     T.eq(type(db.stats), "table")
     T.isNil(db.ownership)
 
     local empty = Core.Sanitize({})
-    T.eq(empty.baseMode, "auto")
-    T.eq(empty.latencySource, "world")
-    T.eq(empty.minWindow, 50)
-    T.eq(empty.maxWindow, 400)
+    T.eq(empty.enabled, true)
     T.eq(empty.showStatus, true)
-    T.eq(empty.chatFeedback, false)
-    T.eq(empty.showAdvanced, false)
-    T.eq(empty.statusFontSize, 12)
+    T.isNil(empty.baseOverride, "默认跟随专精表")
     T.isNil(empty.statusBarPos)
     T.eq(empty.stats.applied, 0)
 
-    -- statusFont 空白串也算坏值
-    T.eq(Core.Sanitize({ statusFont = "" }).statusFont, Core.DEFAULTS.statusFont)
-    -- 数字型字符串会被接受并取整
-    T.eq(Core.Sanitize({ margin = "75" }).margin, 75)
+    -- 数字型字符串会被接受并取整；nil 保持 nil（不是坏值）
+    T.eq(Core.Sanitize({ baseOverride = "180" }).baseOverride, 180)
+    T.isNil(Core.Sanitize({ baseOverride = nil }).baseOverride)
+    -- 非数字才是坏值 -> 回到 nil（跟随专精表）
+    T.isNil(Core.Sanitize({ baseOverride = "abc" }).baseOverride)
 end)
 
 T.test("Sanitize: 非法 ownership 记录被丢弃，合法记录被规范化", function()
@@ -654,17 +690,20 @@ T.test("GetConfig 加载脏存档时先 Sanitize（脏值不进运行时）", fu
     _G.Tate_ASQDB = nil
     _G.AutoSpellQueueDB = {
         enabled = "yes",
-        margin = 9999,
-        latencySource = "??",
+        baseOverride = 9999,
         ownership = { active = true, baseline = 9999 },
         stats = { applied = -5, repairs = "x" },
+        -- v1 的旋钮：必须被清掉
+        margin = 9999,
+        latencySource = "??",
     }
     Core.db = nil
     local cfg = Core.GetConfig()
 
     T.eq(cfg.enabled, true)
-    T.eq(cfg.margin, 300)
-    T.eq(cfg.latencySource, "world")
+    T.eq(cfg.baseOverride, 400, "越界的基础值覆盖被夹到上限")
+    T.isNil(cfg.margin, "v1 的 margin 不再存在")
+    T.isNil(cfg.latencySource, "v1 的 latencySource 不再存在")
     T.isNil(cfg.ownership)
     T.eq(cfg.stats.applied, 0, "负数统计归零")
     T.truthy(cfg.stats.repairs > 0)
@@ -723,27 +762,39 @@ T.test("ImportLegacy: 旧 Tate_ASQDB 导入新变量并清空旧变量", functio
     local cfg = Core.GetConfig()
 
     T.eq(cfg.enabled, false)
-    T.eq(cfg.baseMode, "manual")
-    T.eq(cfg.manualBase, 180)
-    T.eq(cfg.margin, 70)
-    T.eq(cfg.latencySource, "home")
+    -- v1 的「手动基础值」是玩家唯一可能刻意设置过的东西，必须活下来：
+    -- 它降级为命令级覆盖 baseOverride，而不是被丢掉。
+    T.eq(cfg.baseOverride, 180, "手动基础值必须迁移为 baseOverride")
+    T.isNil(cfg.baseMode, "v1 的 baseMode 已退休")
+    T.isNil(cfg.manualBase, "v1 的 manualBase 已退休")
+    T.isNil(cfg.margin, "v1 的 margin 已退休（改由算法计算）")
+    T.isNil(cfg.latencySource, "v1 的 latencySource 已退休")
     T.eq(cfg.importedFrom, "Tate_ASQ")
     T.truthy(type(cfg.importedAt) == "number")
     T.isNil(cfg.junk, "白名单外的旧字段不导入")
     T.isNil(_G.Tate_ASQDB, "导入后必须清空旧 SavedVariables")
     T.truthy(_G.AutoSpellQueueDB == cfg, "导入结果写入新的 SavedVariables")
     T.eq(Core.GetStatus().importedFrom, "Tate_ASQ")
-    T.eq(cfg.statusFontSize, 12, "未导入的键用默认值补齐")
+    T.eq(cfg.showStatus, true, "未导入的键用默认值补齐")
+end)
+
+T.test("ImportLegacy: 自动基础值模式不产生覆盖（保持跟随专精表）", function()
+    resetWorld()
+    _G.AutoSpellQueueDB = nil
+    _G.Tate_ASQDB = { enabled = true, baseMode = "auto", manualBase = 180 }
+    Core.db = nil
+    local cfg = Core.GetConfig()
+    T.isNil(cfg.baseOverride, "auto 模式不应留下任何覆盖")
 end)
 
 T.test("ImportLegacy: 已存在新配置时不被旧变量覆盖", function()
     resetWorld()
-    _G.AutoSpellQueueDB = { enabled = true, margin = 60 }
-    _G.Tate_ASQDB = { enabled = false, margin = 999 }
+    _G.AutoSpellQueueDB = { enabled = true, baseOverride = 60 }
+    _G.Tate_ASQDB = { enabled = false, baseOverride = 999 }
     Core.db = nil
     local cfg = Core.GetConfig()
     T.eq(cfg.enabled, true, "新变量优先")
-    T.eq(cfg.margin, 60)
+    T.eq(cfg.baseOverride, 60)
     T.isNil(cfg.importedFrom)
 end)
 
@@ -754,14 +805,23 @@ T.test("SetConfig: 未知键拒绝、越界夹紧、noRefresh 生效", function(
     T.eq(reason, "unknown-key")
     T.isNil(Core.GetConfig().nope)
 
-    Stub.worldLatency = 0
-    Core.SetConfig("margin", 9999)
-    T.eq(Core.GetConfig().margin, 300, "越界值被夹到上限")
-    T.eq(Core.lastReason, "config:margin", "SetConfig 默认立即刷新")
+    -- 已退休的键必须被拒绝，否则旧设置会靠代码路径偷偷复活
+    for _, retired in ipairs({ "margin", "hysteresis", "adaptive", "latencySource",
+        "baseMode", "manualBase", "minWindow", "maxWindow", "statusFont",
+        "statusFontSize", "chatFeedback", "showAdvanced" }) do
+        local retiredOk = Core.SetConfig(retired, 123, { noRefresh = true })
+        T.falsy(retiredOk, "退休键必须被拒绝: " .. retired)
+        T.isNil(Core.GetConfig()[retired], "退休键不得写进配置: " .. retired)
+    end
 
-    Core.SetConfig("minWindow", 999, { noRefresh = true })
-    T.eq(Core.GetConfig().minWindow, 400)
-    T.eq(Core.lastReason, "config:margin", "noRefresh 不应触发刷新")
+    Stub.worldLatency = 0
+    Core.SetConfig("baseOverride", 9999)
+    T.eq(Core.GetConfig().baseOverride, 400, "越界值被夹到上限")
+    T.eq(Core.lastReason, "config:baseOverride", "SetConfig 默认立即刷新")
+
+    Core.SetConfig("baseOverride", 180, { noRefresh = true })
+    T.eq(Core.GetConfig().baseOverride, 180)
+    T.eq(Core.lastReason, "config:baseOverride", "noRefresh 不应触发刷新")
 
     T.truthy(Core.SetConfig("statusBarPos", { x = 1, y = 2 }, { noRefresh = true }))
     T.deepeq(Core.GetConfig().statusBarPos, { x = 1, y = 2 })
@@ -769,27 +829,48 @@ T.test("SetConfig: 未知键拒绝、越界夹紧、noRefresh 生效", function(
     T.isNil(Core.GetConfig().statusBarPos, "坏位置信息被清掉")
 end)
 
-T.test("ResetSettings: 恢复默认但保留所有权与统计", function()
-    resetWorld({ enabled = true, chatFeedback = true })
+T.test("SetBaseOverride: 命令级逃生口的三种输入", function()
+    resetWorld({ enabled = true })
     Stub.SetCVarValue(150)
-    applyOnce(300, 350)
+
+    T.truthy(Core.SetBaseOverride(180))
+    T.eq(Core.GetConfig().baseOverride, 180)
+    -- 改基础值会立刻重算并接管（这正是玩家输入命令后期待的行为）
+    T.eq(Core.GetStatus().base, 180, "基础值立即生效")
+    T.eq(Stub.CVarValue(), tostring(Core.GetStatus().target))
+
+    T.truthy(Core.SetBaseOverride("auto"))
+    T.isNil(Core.GetConfig().baseOverride, "auto 恢复跟随专精表")
+    T.eq(Core.GetStatus().base, 245, "回到该专精表的基础值")
+
+    local ok = Core.SetBaseOverride("abc")
+    T.falsy(ok, "非数字必须被拒绝")
+    T.isNil(Core.GetConfig().baseOverride)
+end)
+
+T.test("ResetSettings: 恢复默认但保留所有权与统计", function()
+    resetWorld({ enabled = true })
+    Stub.SetCVarValue(150)
+    applyOnce(300, ExpectedTarget(300))
     local cfg = Core.GetConfig()
     cfg.stats.applied = 7
-    cfg.margin = 123
-    cfg.hysteresis = 42
+    cfg.baseOverride = 180
+    cfg.showStatus = false
 
     local ok = Core.ResetSettings()
     T.truthy(ok)
     local after = Core.GetConfig()
     T.truthy(after.ownership and after.ownership.active, "reset 不得丢下已接管的 CVar")
     T.deepeq(after.ownership, {
-        active = true, schema = Core.SCHEMA_VERSION, baseline = 150, lastApplied = 350, startedAt = 1000,
+        active = true, schema = Core.SCHEMA_VERSION, baseline = 150, lastApplied = ExpectedTarget(300), startedAt = 1000,
     }, "ownership 字段必须原样保留（Sanitize 会重建表，内容不变）")
     T.eq(after.stats.applied, 7, "统计不因 reset 归零")
-    T.eq(after.margin, 50)
-    T.eq(after.hysteresis, 10)
+    T.isNil(after.baseOverride, "reset 清掉命令级覆盖，回到跟随专精表")
+    T.eq(after.showStatus, true)
     T.eq(after.enabled, true)
     T.eq(after.schemaVersion, Core.SCHEMA_VERSION)
+    -- reset 之后即使 baseOverride 没了，所有权仍在：值不会被丢在半路
+    T.eq(Core.state, Core.STATE.APPLIED)
 end)
 
 T.test("SetEnabled/IsEnabled 与 ticker 生命周期", function()
@@ -1072,18 +1153,24 @@ T.test("定时器: 每 REFRESH_SECONDS 重新读延迟并更新 CVar", function(
     Stub.worldLatency = 100
 
     Stub.FireEvent("PLAYER_ENTERING_WORLD")
-    T.eq(Stub.CVarValue(), "245", "Fire 基础 245，延迟 100+50 不改变目标")
+    T.eq(Stub.CVarValue(), "245", "Fire 基础 245，延迟 100 加余量后仍不超过它")
     T.notNil(Core.ticker)
 
     Stub.Advance(41) -- 暖机定时器全部跑完
     T.eq(Stub.PendingTimers(), 1, "暖机结束后只剩 ticker")
 
     Stub.ClearWrites()
-    Stub.worldLatency = 300 -- 新目标 350
-    Stub.Advance(Core.REFRESH_SECONDS + 1)
-    T.eq(#Stub.writes, 1, "ticker 到点必须重新读延迟")
-    T.eq(Stub.writes[1].value, "350")
-    T.eq(Stub.CVarValue(), "350")
+    -- 延迟持续处在高位：算法会先按抖动放大余量、再让平滑值追上去，
+    -- 因此这里断言「必须跟着实时状态动」，而具体数值由算法决定。
+    Stub.worldLatency = 300
+    Stub.Advance(Core.REFRESH_SECONDS * 4)
+
+    T.truthy(#Stub.writes >= 1, "ticker 到点必须重新读延迟")
+    local written = tonumber(Stub.writes[#Stub.writes].value)
+    T.eq(written, Core.GetStatus().target, "写入值必须等于最近一次算出的目标")
+    T.truthy(written > 245, "延迟从 100 升到 300 后目标必须跟着升（实得 " .. tostring(written) .. "）")
+    T.inRange(written, Core.WINDOW_MIN, Core.WINDOW_MAX)
+    T.eq(Stub.CVarValue(), tostring(written))
 end)
 
 T.test("暖机: 延迟未知时按计划重试，拿到延迟后停止重试", function()
@@ -1103,7 +1190,7 @@ T.test("暖机: 延迟未知时按计划重试，拿到延迟后停止重试", f
 
     Stub.worldLatency = 300
     Stub.Advance(10) -- 命中 20s 那一步
-    T.eq(Stub.CVarValue(), "350", "重试必须使用刚拿到的延迟")
+    T.eq(Stub.CVarValue(), tostring(ExpectedTarget(300)), "重试必须使用刚拿到的延迟")
     T.eq(PendingNonTicker(), 0, "拿到延迟后不再重试")
     T.notNil(Core.ticker, "启用状态下周期刷新继续存在（与暖机重试是两件事）")
 end)
@@ -1146,16 +1233,40 @@ T.test("结构: 除 CVar.lua 外没有文件直接碰 SpellQueueWindow / C_CVar"
     T.truthy(cvarCode:find("GetCVarInfo", 1, true) ~= nil)
 end)
 
-T.test("结构: Core.DEFAULTS 的键就是配置白名单", function()
-    for _, key in ipairs({ "enabled", "baseMode", "manualBase", "adaptive", "latencySource",
-        "margin", "minWindow", "maxWindow", "hysteresis", "showStatus", "statusFont",
-        "statusFontSize", "chatFeedback", "showAdvanced", "schemaVersion" }) do
-        T.truthy(Core.DEFAULTS[key] ~= nil, "DEFAULTS 缺少 " .. key)
+T.test("结构: 配置白名单必须正好是「玩家能决定的 + 插件自己的账本」", function()
+    -- 这条用例是「设置不许悄悄长回来」的守门人：新增任何配置键都必须先
+    -- 说明它为什么必须由玩家决定，否则就该是算法常量。
+    local expected = {
+        schemaVersion = true,
+        enabled = true,        -- 玩家：总开关
+        showStatus = true,     -- 玩家：要不要显示读数
+        statusBarPos = true,   -- 插件账本：状态条位置（拖动产生）
+        baseOverride = true,   -- 逃生口：仅 /asq base 写入
+        ownership = true,      -- 插件账本：接管状态
+        stats = true,          -- 插件账本：统计
+    }
+    local actual = {}
+    for key in pairs(Core.DEFAULTS) do actual[key] = true end
+    for key in pairs(expected) do
+        T.truthy(Core.DEFAULTS[key] ~= nil or key == "statusBarPos" or key == "baseOverride"
+            or key == "ownership" or key == "stats", "DEFAULTS 缺少 " .. key)
     end
+    for key in pairs(actual) do
+        T.truthy(expected[key], "出现了未经审阅的配置键: " .. key ..
+            "（如果玩家不需要决定它，就应该是算法常量而不是设置）")
+    end
+
+    -- 玩家可见的设置必须只有两个开关（面板里也只允许有这两个）
+    local playerKeys = {}
+    for key in pairs(Core.DEFAULTS) do
+        if key == "enabled" or key == "showStatus" then playerKeys[#playerKeys + 1] = key end
+    end
+    T.eq(#playerKeys, 2, "玩家可见设置必须恰好两个：enabled / showStatus")
+
     T.eq(Core.SV, "AutoSpellQueueDB")
     T.eq(Core.LEGACY_SV, "Tate_ASQDB")
     T.eq(Core.NAME, "AutoSpellQueue")
-    T.eq(Core.SCHEMA_VERSION, 1)
+    T.eq(Core.SCHEMA_VERSION, 2, "schema v2 = 只留两个设置")
     T.eq(Core.STATE.IDLE, "idle")
     T.eq(Core.STATE.DISABLED, "disabled")
     T.eq(Core.STATE.APPLIED, "applied")

@@ -28,6 +28,7 @@ const ADDON_NAME = "AutoSpellQueue";
 /** Load order matters: Formula and CVar define ns.* before Core reads them. */
 const CORE_FILES = [
   "AutoSpellQueue_Formula.lua",
+  "AutoSpellQueue_Latency.lua",
   "AutoSpellQueue_CVar.lua",
   "AutoSpellQueue.lua",
 ];
