@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     AutoSpellQueue 本地验证门禁：语法 -> 单元测试 -> 结构/版本一致性 ->（可选）打包。
@@ -131,7 +131,9 @@ foreach ($file in $runtimeAll) {
 }
 
 $requiredDev = @(
-    'README.md', 'CHANGELOG.md', 'docs\ARCHITECTURE.md',
+    'README.md', 'CHANGELOG.md', 'HANDOFF.md', 'AGENTS.md', 'LICENSE', '.pkgmeta',
+    'docs\README.md', 'docs\ARCHITECTURE.md', 'docs\CURSEFORGE.md', 'docs\DESCRIPTION.md',
+    'tests\REGRESSIONS.md',
     'tools\check-syntax.mjs', 'tools\run-tests.mjs', 'tools\package.ps1', 'tools\verify.ps1',
     'tests\run.lua', 'tests\wow_stub.lua',
     'tests\spec_formula.lua', 'tests\spec_cvar.lua', 'tests\spec_core.lua',

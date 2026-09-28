@@ -1,11 +1,13 @@
-# AutoSpellQueue —— 给魔兽玩家的说明 / A player's guide
+# AutoSpellQueue — 给魔兽玩家的说明 / A player's guide
 
-> 这份文档是**面向玩家的唯一文案源**：CurseForge 商店页简介与详细描述、GitHub Release 说明、
-> 论坛/群里转发用的介绍，都从这里取，不要各自另写一份（避免多处文案漂移）。
-> 中文与 English 是**各自独立成篇**的两版，不是逐句互译。
+> **这份文件是面向玩家的唯一文案源。** CurseForge 商店页、GitHub Release 说明、论坛/群里转发的内容，
+> 都从这里取；不要在别处另写一份（会漂移）。中文与 English **各自独立成篇**，不是逐句互译。
+> 开发向文档请去 [`ARCHITECTURE.md`](ARCHITECTURE.md) / [`../README.md`](../README.md)。
 >
-> This file is the single source of player-facing copy (store page, release notes, forum posts).
-> The 中文 and English sections are written independently, not as a literal translation of each other.
+> Store copy, release notes and forum posts all come from this file. The 中文 and English sections are
+> written independently, not as literal translations of one another.
+
+**目录**：[中文](#中文版) · [English](#english) · [商店页短简介 / Store summary](#商店页短简介--store-summary)
 
 ---
 
@@ -108,6 +110,9 @@
 
 **会被封号吗？**
 它只读写一个本地 CVar，等同于你自己敲 `/console`，完全不碰战斗逻辑。但请记住一句话：**任何声称替你打输出的插件都别装**——那才是会出事的东西。
+
+**在哪反馈问题？**
+[GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues)，或 CurseForge 项目页的评论。
 
 ## 一句话总结
 
@@ -215,18 +220,36 @@ Retail 12.x (12.0.0–12.1.5). No Classic build.
 **Can I get banned?**
 It reads and writes one local CVar — the same thing you can do with `/console`. It never touches combat logic. Still, keep this rule: **never install anything that claims to play the game for you.** That's the stuff that gets people actioned.
 
+**Where do I report problems?**
+[GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues), or the CurseForge project page.
+
 ## One line
 
 It does the number you couldn't be bothered to compute, then shuts up about it.
 
 ---
 
-# 商店页短简介 / Store summary (one paragraph)
+# 商店页短简介 / Store summary
 
 **zhCN**
 
-> 自动把施法队列窗口（`SpellQueueWindow`）调整到适合你专精与网络延迟的值，并在插件停用时归还你自己原来的值。只修改本地客户端设置，不自动施法、不联网、无遥测。
+> 自动把施法队列窗口（`SpellQueueWindow`）调整到适合你专精与网络延迟的值，并在它不再管理时归还你自己原来的值。只修改本地客户端设置，不自动施法、不联网、无遥测。
 
 **en**
 
 > Keeps your spell queue window (`SpellQueueWindow`) tuned to your spec and latency, and puts your own value back when it stops managing it. It only changes a local client setting — no automation, no network access, no telemetry.
+
+---
+
+## 安装步骤（商店页也需要，故在此保留一份）
+
+1. 下载 zip，解压得到 `AutoSpellQueue` 文件夹。
+2. 放进 `World of Warcraft\_retail_\Interface\AddOns\`（即 `AddOns\AutoSpellQueue\AutoSpellQueue.toc`）。
+3. 进游戏，默认启用。
+
+从旧版 `Tate_ASQ` 升级：**先删除旧的 `Tate_ASQ` 文件夹**；想保留旧设置，再把
+`WTF\Account\<账号>\SavedVariables\Tate_ASQ.lua` 复制为同目录的 `AutoSpellQueue.lua`
+（客户端只加载与插件文件夹同名的存档文件；不复制就用默认设置）。
+
+> 说明：安装步骤在 `README.md` 与本文各有一份是**刻意的**——商店页无法引用仓库文件。
+> 其余事实只在 `README.md` / `ARCHITECTURE.md` 里维护，见 [`README.md`](README.md)（文档地图）。
