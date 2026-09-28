@@ -9,7 +9,7 @@
 > 原名 `Tate_ASQ`（Tate's AutoSpellQueue），v2.0.0 起更名为 **AutoSpellQueue**。
 > **中文界面显示为「施法容限」**（插件列表、设置页标题、聊天提示都是这个名字），英文界面为 `Auto Spell Queue`。
 
-**📖 玩家请直接看 [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md)**（中文 + English 两版全文：这值是什么、
+**📖 玩家请直接看 [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md)**（简体 / 繁體 / English 三版全文：这值是什么、
 为什么默认 400 让人难受、谁受益、怎么确认它在工作、它不做什么）。
 README 只保留「装、跑、验证」这类实用信息（中英各一份）。
 
@@ -122,7 +122,7 @@ docs/                         # 文档（不进发布包）
 > 原名 `Tate_ASQ`（Tate's AutoSpellQueue），v2.0.0 起更名為 **AutoSpellQueue**。
 > **中文介面顯示為「施法容限」**（插件清單、設定頁標題、聊天提示都是這個名字），英文介面為 `Auto Spell Queue`。
 
-**📖 玩家請直接看 [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md)**（目前為簡體 + English 兩版全文：這個值是什麼、
+**📖 玩家請直接看 [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md)**（簡體 / 繁體 / English 三版全文：這個值是什麼、
 為什麼預設 400 讓人難受、誰受益、怎麼確認它在工作、它不做什麼）。
 README 只保留「安裝、執行、驗證」這類實用資訊（簡體 / 繁體 / English 各一份）。
 
@@ -189,7 +189,7 @@ managing the setting.
 > Formerly `Tate_ASQ` (Tate's AutoSpellQueue); renamed to **AutoSpellQueue** in v2.0.0.
 > **On a Chinese client it shows as 「施法容限」** (addon list, settings page title and chat notices all use that name); on an English client it is `Auto Spell Queue`.
 
-**📖 Players: read [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md)** for the full write-up in Chinese and English
+**📖 Players: read [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md)** for the full write-up in Simplified Chinese, Traditional Chinese and English
 (what the setting is, why the 400 ms default feels bad, who benefits, how to confirm it works, what it never does).
 This README keeps only practical information, in both languages.
 

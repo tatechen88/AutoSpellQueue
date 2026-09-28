@@ -8,7 +8,7 @@
 | 文档 | 读者 | 它唯一负责的内容 | 它不负责 |
 |---|---|---|---|
 | [`../README.md`](../README.md) | 拿到仓库的人（玩家或开发者） | 这是什么、安装/升级、一分钟上手、指向其它文档（**简体 / 繁體 / English 三语**，内容等价） | 不复述玩家长文、不复述发布流程 |
-| [`DESCRIPTION.md`](DESCRIPTION.md) | **玩家**（也是商店页 / 发布说明的文案源） | 中文全文 + English 全文 + 商店页短简介 | 不含开发细节、不含发布流程 |
+| [`DESCRIPTION.md`](DESCRIPTION.md) | **玩家**（也是商店页 / 发布说明的文案源） | 简体 / 繁體 / English 三版全文 + 商店页短简介（三语） | 不含开发细节、不含发布流程 |
 | [`../CHANGELOG.md`](../CHANGELOG.md) | 玩家 + 开发者 | 版本历史（简体 / 繁體 / English 三语，每版：玩家可见变化 → 修复 → 升级须知） | 不含「如何发布」 |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 开发者 | 文件与加载顺序、接口契约、状态机不变量、测试与打包约定 | 不含玩家说明 |
 | [`CURSEFORGE.md`](CURSEFORGE.md) | 发布者 | 发布规划与操作手册：命名检查、素材、打包、合规、checklist、发布后流程 | 文案正文在 `DESCRIPTION.md` |
