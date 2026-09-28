@@ -265,18 +265,9 @@ local function NewText(parent, fontObject)
     return parent:CreateFontString(nil, "OVERLAY", fontObject or "GameFontNormal")
 end
 
---- Turns on wrapping that also works for Chinese/Japanese text.
---  `SetWordWrap(true)` alone only breaks at spaces, so a long Chinese sentence
---  has nowhere to break and the client truncates it with an ellipsis (seen
---  in-game: the panel subtitle ended in "**不..."). SetNonSpaceWrap lets the
---  client break inside space-less runs, which is what CJK needs.
-local function EnableWrap(fontString)
-    fontString:SetWordWrap(true)
-    fontString:SetNonSpaceWrap(true)
-    return fontString
-end
-
 --- Tooltip helper. Title/body may be strings or functions (for live text).
+--  This is where the panel's explanations live: long text belongs on hover, not
+--  on a page a player only opens to flip a switch.
 local function AttachTooltip(frame, title, body)
     frame:HookScript("OnEnter", function(self)
         if not GameTooltip then return end
@@ -401,39 +392,21 @@ local function AddRow(parent, y, height)
     return row, y - height - ROW_GAP
 end
 
---- Row label. `stacked` is for rows that also carry a hint: the label then sits
---- at the top of the row instead of being vertically centred, otherwise it is
---- drawn on top of the hint (the client has no automatic layout).
-local function AddRowLabel(row, key, stacked)
+--- Row label.
+local function AddRowLabel(row, key)
     local label = NewText(row, "GameFontNormal")
-    if stacked then
-        label:SetPoint("TOPLEFT", 12, -6)
-    else
-        label:SetPoint("LEFT", 12, 0)
-    end
+    label:SetPoint("LEFT", 12, 0)
     label:SetText(L(key))
     label:SetJustifyH("LEFT")
     return label
 end
 
-local function AddRowHint(row, key)
-    local hint = NewText(row, "GameFontNormalSmall")
-    hint:SetPoint("TOPLEFT", 12, -25)
-    hint:SetWidth(INNER_WIDTH - 40)
-    hint:SetJustifyH("LEFT")
-    EnableWrap(hint)
-    hint:SetTextColor(1, 1, 1, 0.45)
-    hint:SetText(L(key))
-    return hint
-end
-
 --- Toggle row: right aligned switch plus a localised on/off word.
-local function AddToggle(parent, y, labelKey, get, set, hintKey)
-    -- Hinted rows are two lines: label on top, hint underneath.
-    local height = hintKey and 56 or ROW_HEIGHT
-    local row, nextY = AddRow(parent, y, height)
-    AddRowLabel(row, labelKey, hintKey ~= nil)
-    if hintKey then AddRowHint(row, hintKey) end
+--  No hint parameter any more: explanations go on tooltips now, so a row is
+--  always one line tall and the layout has nothing to get wrong.
+local function AddToggle(parent, y, labelKey, get, set)
+    local row, nextY = AddRow(parent, y, ROW_HEIGHT)
+    AddRowLabel(row, labelKey)
 
     local stateText = NewText(row, "GameFontNormalSmall")
     stateText:SetPoint("RIGHT", -68, 0)
@@ -718,246 +691,96 @@ local function BuildUI(contentParent)
 
     local y = 0
 
-    -- Wrapping strings need an EXPLICIT width. A FontString that derives its
-    -- width from left+right anchors does not re-flow in the client: it gets
-    -- ellipsized mid-sentence ("...不需…" was measured in-game). So every
-    -- wrapping string is registered here and given a width whenever the content
-    -- frame is (re)sized.
-    local wrappers = {}
-    --- Registers a wrapping string and sets its width immediately.
-    --  The width must be in place *before* the caller measures GetStringHeight:
-    --  measuring a still-widthless string reports one line, so the next row is
-    --  placed too high and the wrapped second line is drawn over it (seen
-    --  in-game: the panel subtitle overlapped the master-switch row).
-    local function WrapToWidth(fontString, inset)
-        inset = inset or 0
-        EnableWrap(fontString)
-        wrappers[#wrappers + 1] = { fs = fontString, inset = inset }
-        local width = content:GetWidth() or 0
-        if width <= 0 then width = math.max(240, PANEL_WIDTH - 2 * PANEL_PAD) end
-        fontString:SetWidth(math.max(120, width - inset))
-        return fontString
-    end
-    local function ApplyWrapWidths()
-        local width = content:GetWidth() or 0
-        if width <= 0 then return end
-        for _, entry in ipairs(wrappers) do
-            entry.fs:SetWidth(math.max(120, width - entry.inset))
-        end
-    end
+    -- ---------------------------------------------------------------------
+    --  The whole panel, deliberately: a title that is also the master switch,
+    --  one status line, the readout switch and "reset position".
+    --
+    --  Everything a curious player might want (what the number is made of, how
+    --  often it samples, where the diagnostics and the escape hatch live) is on
+    --  a tooltip instead of on the page. A wall of explanation is not something
+    --  an ordinary player needs to read to trust an addon that has nothing to
+    --  configure.
+    -- ---------------------------------------------------------------------
 
-    -- Header ---------------------------------------------------------------
-    local title = NewText(content, "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+    -- Title row = master switch ---------------------------------------------
+    local titleRow = CreateFrame("Frame", nil, content)
+    titleRow:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+    titleRow:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
+    titleRow:SetHeight(34)
+
+    local title = NewText(titleRow, "GameFontNormalLarge")
+    title:SetPoint("LEFT", 2, 0)
     title:SetText(L("PANEL_TITLE"))
     title:SetTextColor(ACCENT[1], ACCENT[2], ACCENT[3])
-    y = y - 30
 
-    local subtitle = NewText(content, "GameFontNormalSmall")
-    subtitle:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
-    subtitle:SetJustifyH("LEFT")
-    WrapToWidth(subtitle)
-    subtitle:SetTextColor(1, 1, 1, 0.55)
-    subtitle:SetText(L("PANEL_SUBTITLE"))
-    y = y - math.max(16, subtitle:GetStringHeight() or 16) - 10
-
-    -- Master switch --------------------------------------------------------
-    y = select(2, AddToggle(content, y, "SETTING_ENABLED",
-        function() return Core.IsEnabled() end,
-        function(value) Core.SetEnabled(value) end,
-        "SETTING_ENABLED_HINT"))
-
-    y = y - 8
-
-    -- Status card ----------------------------------------------------------
-    -- Tall enough for the field rows plus two wrapped lines each for the formula,
-    -- the sample note and the state hint.
-    local cardHeight = 224
-    local card = CreateFrame("Frame", nil, content)
-    card:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
-    card:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
-    card:SetHeight(cardHeight)
-    local cardBg = card:CreateTexture(nil, "BACKGROUND")
-    cardBg:SetAllPoints()
-    SetColor(cardBg, 0, 0, 0, 0.32)
-    AddBorder(card, 1, 1, 1, 0.10)
-    y = y - cardHeight - 10
-
-    local badge = CreateFrame("Frame", nil, card)
-    badge:SetPoint("TOPLEFT", 12, -12)
-    badge:SetSize(96, 22)
-    badge:EnableMouse(true)
-    local badgeBg = badge:CreateTexture(nil, "BACKGROUND")
-    badgeBg:SetAllPoints()
-    SetColor(badgeBg, 0.20, 0.20, 0.20, 0.80)
-    local badgeText = NewText(badge, "GameFontNormalSmall")
-    badgeText:SetPoint("CENTER")
-    badgeText:SetText(L("STATE_IDLE"))
-    badge:SetScript("OnEnter", function(self)
-        if not GameTooltip then return end
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:ClearLines()
-        GameTooltip:AddLine(self._title or "", 1, 1, 1, true)
-        if self._body then GameTooltip:AddLine(self._body, 0.85, 0.85, 0.85, true) end
-        GameTooltip:Show()
+    local stateText = NewText(titleRow, "GameFontNormalSmall")
+    stateText:SetPoint("RIGHT", -68, 0)
+    local switch = NewSwitch(titleRow)
+    switch:SetPoint("RIGHT", -12, 0)
+    switch:SetScript("OnClick", function()
+        Core.SetEnabled(not Core.IsEnabled())
+        RefreshUI()
     end)
-    badge:SetScript("OnLeave", function()
-        if GameTooltip then GameTooltip:Hide() end
+    AttachTooltip(titleRow, L("PANEL_TITLE"), L("SETTING_ENABLED_HINT"))
+
+    AddUpdater(function()
+        local on = Core.IsEnabled() and true or false
+        SwitchSet(switch, on)
+        stateText:SetText(on and L("VALUE_ON") or L("VALUE_OFF"))
+        stateText:SetTextColor(1, 1, 1, on and 0.90 or 0.50)
     end)
+    y = y - 34 - 4
 
-    local currentLabel = NewText(card, "GameFontNormalSmall")
-    currentLabel:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -10)
-    currentLabel:SetText(L("LABEL_CURRENT"))
-    currentLabel:SetTextColor(1, 1, 1, 0.55)
-    local currentValue = NewText(card, "GameFontNormalLarge")
-    currentValue:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -26)
-    currentValue:SetText(L("VALUE_PLACEHOLDER"))
+    -- One status line --------------------------------------------------------
+    -- The text sits inside a mouse-enabled frame on purpose: a FontString cannot
+    -- receive mouse events in the client (no HookScript/OnEnter), so attaching a
+    -- tooltip to one is impossible - it threw and left the page half built.
+    local statusRow = CreateFrame("Frame", nil, content)
+    statusRow:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+    statusRow:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
+    statusRow:SetHeight(20)
+    statusRow:EnableMouse(true)
 
-    local columnWidth = (INNER_WIDTH - 28) / 2
-    local function AddCardField(column, rowIndex, labelText)
-        local baseX = 14 + column * columnWidth
-        local baseY = -48 - rowIndex * 20
-        local label = NewText(card, "GameFontNormalSmall")
-        label:SetPoint("TOPLEFT", card, "TOPLEFT", baseX, baseY)
-        label:SetText(labelText)
-        label:SetTextColor(1, 1, 1, 0.50)
-        local value = NewText(card, "GameFontHighlightSmall")
-        value:SetPoint("TOPRIGHT", card, "TOPLEFT", baseX + columnWidth - 24, baseY)
-        value:SetJustifyH("RIGHT")
-        value:SetText(L("VALUE_PLACEHOLDER"))
-        return value
-    end
-
-    local targetValue = AddCardField(0, 0, L("LABEL_TARGET") .. " (" .. L("TAG_SAMPLED") .. ")")
-    local latencyValue = AddCardField(1, 0, L("LABEL_LATENCY") .. " (" .. L("TAG_SAMPLED") .. ")")
-    local contextValue = AddCardField(0, 1, L("LABEL_CONTEXT"))
-    local specValue = AddCardField(1, 1, L("LABEL_SPEC"))
-    local baseValue = AddCardField(0, 2, L("LABEL_BASE"))
-    local baselineValue = AddCardField(1, 2, L("LABEL_BASELINE"))
-
-    local formulaLine = NewText(card, "GameFontNormalSmall")
-    formulaLine:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -110)
-    formulaLine:SetWidth(INNER_WIDTH - 28)
-    formulaLine:SetJustifyH("LEFT")
-    formulaLine:SetWordWrap(false)
-    formulaLine:SetTextColor(1, 1, 1, 0.70)
-    formulaLine:SetText(L("FORMULA_UNKNOWN"))
-
-    -- Fixed line slots, each sized for up to two wrapped lines. They used to be
-    -- 18 px apart, which was fine while every string was short; the moment one
-    -- wrapped (measured in-game) the two lines were drawn on top of each other.
-    local sampledLine = NewText(card, "GameFontNormalSmall")
-    sampledLine:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -130)
-    sampledLine:SetWidth(INNER_WIDTH - 28)
-    sampledLine:SetJustifyH("LEFT")
-    EnableWrap(sampledLine)
-    sampledLine:SetTextColor(1, 1, 1, 0.40)
-
-    local hintLine = NewText(card, "GameFontNormalSmall")
-    hintLine:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -166)
-    hintLine:SetWidth(INNER_WIDTH - 28)
-    hintLine:SetJustifyH("LEFT")
-    EnableWrap(hintLine)
-    hintLine:SetTextColor(1, 1, 1, 0.75)
-    hintLine:SetText(L("HINT_IDLE"))
+    local statusLine = NewText(statusRow, "GameFontNormal")
+    statusLine:SetPoint("LEFT", 2, 0)
+    statusLine:SetJustifyH("LEFT")
+    statusLine:SetText(L("STATE_IDLE"))
+    -- The long version lives here: what the addon does, how the number was
+    -- derived, how often it samples, and where diagnostics / the escape hatch
+    -- are. Hover to read it; nobody has to.
+    AttachTooltip(statusRow, L("PANEL_TITLE"), function()
+        local status = refreshStatus or Core.GetStatus()
+        return table.concat({
+            L("PANEL_SUBTITLE"),
+            FormulaText(refreshCfg, status),
+            SampledText(status),
+            L("PANEL_FOOTER"),
+        }, "\n")
+    end)
 
     AddUpdater(function()
         local status = refreshStatus
         local state = ResolveState(status)
         local color = STATE_COLOR[state] or STATE_COLOR.idle
-        local stateText = StateLabel(state)
-
-        badgeText:SetText(stateText)
-        badgeText:SetTextColor(color[1], color[2], color[3])
-        SetColor(badgeBg, color[1], color[2], color[3], 0.22)
-        badge._title = L("LABEL_STATUS") .. ": " .. stateText
-
         local current = EffectiveCurrent(status)
-        if current ~= nil then
-            currentValue:SetText(Format("UNIT_MS", current))
-            currentValue:SetTextColor(color[1], color[2], color[3])
-        else
-            currentValue:SetText(L("VALUE_UNAVAILABLE"))
-            currentValue:SetTextColor(STATE_COLOR.unavailable[1], STATE_COLOR.unavailable[2],
-                STATE_COLOR.unavailable[3])
+
+        -- Short by design: state, and the number only when the addon really is
+        -- managing it (never show a believable number for a value we do not own).
+        local text = StateLabel(state)
+        if current ~= nil and state ~= "disabled" and state ~= "error"
+            and state ~= "unavailable" then
+            text = text .. " · " .. Format("UNIT_MS", current)
         end
-
-        targetValue:SetText(MsText(status.target))
-        -- Only the picked latency here: the world/home breakdown would collide
-        -- with the label in a narrow column. It lives in the tooltip and in
-        -- "/asq status".
-        latencyValue:SetText(MsText(status.latency))
-        contextValue:SetText(ContextText(status.context))
-        specValue:SetText(SpecText(status) .. " · " .. RoleText(status.role))
-        baseValue:SetText(MsText(status.base))
-        if status.owned then
-            baselineValue:SetText(MsText(status.baseline))
-        else
-            -- Not "unavailable": there simply is nothing to put back yet.
-            baselineValue:SetText(L("VALUE_NONE"))
-        end
-
-        formulaLine:SetText(FormulaText(refreshCfg, status))
-        sampledLine:SetText(SampledText(status))
-
-        local hint
-        local hintColor = { 1, 1, 1, 0.75 }
-        if state == "error" then
-            local age = NumText(status.lastErrorAt)
-            local text = Format("HINT_ERROR", ReasonText(status))
-            if age then
-                local seconds = math.max(0, math.floor(Core.Now() - age))
-                text = text .. "  " .. Format("HINT_ERROR_AGE", seconds)
-            end
-            hint = text
-            hintColor = { STATE_COLOR.error[1], STATE_COLOR.error[2], STATE_COLOR.error[3], 1 }
-            badge._body = hint
-        elseif state == "unavailable" then
-            hint = Format("HINT_UNAVAILABLE", ReasonText(status))
-            hintColor = { STATE_COLOR.unavailable[1], STATE_COLOR.unavailable[2], STATE_COLOR.unavailable[3], 1 }
-            badge._body = hint
-        elseif state == "pending" then
-            hint = L("HINT_PENDING")
-            badge._body = hint
-        elseif state == "disabled" then
-            if status.owned then
-                hint = Format("HINT_DISABLED_OWNED", NumText(status.baseline) or 0)
-            else
-                hint = L("HINT_DISABLED")
-            end
-            badge._body = hint
-        elseif state == "applied" then
-            hint = L("HINT_APPLIED")
-            badge._body = L("HINT_APPLIED")
-        else
-            hint = L("HINT_IDLE")
-            badge._body = L("HINT_IDLE")
-        end
-
         if status.externalChange then
-            hint = hint .. "  " .. L("HINT_EXTERNAL_CHANGE")
+            text = text .. " · " .. L("HINT_EXTERNAL_CHANGE")
         end
-        if status.schemaFuture then
-            hint = hint .. "  " .. L("HINT_SCHEMA_FUTURE")
-        end
-        if status.importedFrom then
-            hint = hint .. "  " .. L("HINT_IMPORTED")
-        end
-        if state ~= "disabled" and state ~= "error" and state ~= "unavailable" then
-            local latency = NumText(status.latency) or 0
-            local world = NumText(status.world) or 0
-            local home = NumText(status.home) or 0
-            if latency == 0 and world == 0 and home == 0 then
-                hint = hint .. "  " .. L("HINT_NO_LATENCY")
-            end
-        end
-        hintLine:SetText(hint)
-        hintLine:SetTextColor(hintColor[1], hintColor[2], hintColor[3], hintColor[4])
+        statusLine:SetText(text)
+        statusLine:SetTextColor(color[1], color[2], color[3])
     end)
+    y = y - 20 - 12
 
     -- Display ---------------------------------------------------------------
-    -- That is the whole panel: the algorithm configures itself, so the only
-    -- thing left for the player to decide is whether the readout is drawn.
+    -- The only thing left for the player to decide: draw the readout or not.
     local row
     row, y = AddToggle(content, y, "SETTING_SHOW_STATUS",
         function() return Cfg().showStatus end,
@@ -966,6 +789,8 @@ local function BuildUI(contentParent)
             CreateStatusBar()
             ApplyStatusBarVisibility()
         end)
+    local showRow = row
+    AttachTooltip(showRow, L("SETTING_SHOW_STATUS"), L("TOOLTIP_STATUS_BAR"))
 
     do
         local positionRow
@@ -976,24 +801,11 @@ local function BuildUI(contentParent)
         positionButton:SetScript("OnClick", function() ResetStatusBarPosition(true) end)
     end
 
-    local footer = NewText(content, "GameFontNormalSmall")
-    footer:SetPoint("TOPLEFT", content, "TOPLEFT", 2, y - 6)
-    footer:SetJustifyH("LEFT")
-    WrapToWidth(footer, 4)
-    footer:SetTextColor(1, 1, 1, 0.40)
-    footer:SetText(L("PANEL_FOOTER"))
-    y = y - 6 - math.max(16, footer:GetStringHeight() or 16) - 8
-
-    ApplyWrapWidths()
+    -- No footer line: its content (how headroom is derived, how often it samples,
+    -- where /asq status and /asq base live) is on the status-line tooltip.
     SetContentHeight(content, -y + 6)
     built = true
     RefreshUI()
-
-    -- Keep the wrapping strings in step with the viewport: the canvas sizes our
-    -- frame only after it is shown, and the player can resize the window.
-    scroll:HookScript("OnSizeChanged", function(_, width)
-        if (width or 0) > 0 then ApplyWrapWidths() end
-    end)
 end
 
 -------------------------------------------------------------------------------
@@ -1003,8 +815,17 @@ local function EnsureBuilt()
     if panelReady then return end
     panelReady = true
     PullState()
-    if host then
-        BuildUI(host)
+    if not host then return end
+    -- A build failure used to leave a half-built (or blank) page with no
+    -- explanation - the worst possible outcome. Report it the same way Setup
+    -- reports its steps, and keep the message reachable for diagnostics.
+    local ok, err = pcall(BuildUI, host)
+    if not ok then
+        _G.ASQ_BUILD_ERROR = tostring(err)
+        Say(Format("MSG_UI_STEP_FAILED", "panel-content", tostring(err)))
+        if type(print) == "function" then
+            print("AutoSpellQueue: panel build failed: " .. tostring(err))
+        end
     end
 end
 

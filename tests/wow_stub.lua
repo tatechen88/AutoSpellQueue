@@ -326,7 +326,15 @@ local function newRegion(kind)
     function region:SetFontObject(font) self.fontObject = font end
     function region:SetJustifyH() end
     function region:SetJustifyV() end
-    function region:SetTextColor() end
+    -- Text colour is recorded, not ignored: "the failure state must be visible"
+    -- is a promise the suite has to be able to check.
+    function region:SetTextColor(r, g, b, a)
+        self.textColor = { r or 1, g or 1, b or 1, a or 1 }
+    end
+    function region:GetTextColor()
+        local c = self.textColor or { 1, 1, 1, 1 }
+        return c[1], c[2], c[3], c[4]
+    end
     function region:SetVertexColor() end
     function region:SetColorTexture(r, g, b, a) self.color = { r, g, b, a } end
     function region:SetTexture() end

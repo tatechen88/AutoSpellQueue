@@ -170,40 +170,57 @@ local function Click(widget)
     handler(widget, "LeftButton", false)
 end
 
---- The status card badge: the only widget the card updater marks with _title.
-local function Badge()
-    return Stub.FindWidget(function(widget) return widget._title ~= nil end)
-end
-
-local function BadgeText(badge)
-    if not badge then return nil end
-    return Stub.FindWidget(function(widget)
-        return widget.__kind == "FontString" and widget.parent == badge
-    end)
-end
-
---- The card's "current" value line: it is created directly after the label that
---- carries LABEL_CURRENT, inside the same card frame.
-local function CardCurrentValue()
-    local label = FindFontStringWithText(Core.L("LABEL_CURRENT"))
-    if not label then return nil end
-    local widgets = Stub.Widgets()
-    local start = Stub.WidgetIndex(label)
-    for index = start + 1, #widgets do
-        local widget = widgets[index]
-        if widget.__kind == "FontString" and widget.parent == label.parent then
-            return widget
-        end
+--- The panel's master switch: it sits in the title row (the title IS the label).
+local function MasterSwitch()
+    local title = FindFontStringWithText(Core.L("PANEL_TITLE"))
+    if not title then return nil end
+    for _, button in ipairs(ButtonsIn(title.parent)) do
+        if button._track then return button end
     end
     return nil
 end
 
-local function StatusBar()
-    return Stub.FindFrame("AutoSpellQueueStatusBar")
+--- The single status line: the last FontString created directly on the panel
+--- content that is not a row label. Identified by what it renders instead.
+local function StatusLine()
+    return Stub.FindWidget(function(widget)
+        if widget.__kind ~= "FontString" or type(widget.text) ~= "string" then return false end
+        for _, state in pairs(Core.STATE) do
+            if string.find(widget.text, Core.L("STATE_" .. string.upper(state)), 1, true) then
+                return true
+            end
+        end
+        return false
+    end)
 end
 
 local function Panel()
     return Stub.FindFrame("AutoSpellQueueOptionsPanel")
+end
+
+--- Every FontString the player can actually read on the panel.
+local function VisibleTexts()
+    if not Panel() then return {} end
+    local scroll = Stub.FindFrame("AutoSpellQueueOptionsScroll")
+    local content = scroll and scroll.__scrollChild
+    if not content then return {} end
+    local texts = {}
+    for _, widget in ipairs(Stub.Widgets()) do
+        if widget.__kind == "FontString" and type(widget.text) == "string" and widget.text ~= "" then
+            -- walk up to the content frame
+            local node, inside = widget, false
+            while node do
+                if node == content then inside = true break end
+                node = node.parent
+            end
+            if inside then texts[#texts + 1] = widget end
+        end
+    end
+    return texts
+end
+
+local function StatusBar()
+    return Stub.FindFrame("AutoSpellQueueStatusBar")
 end
 
 --- Rows whose label text matches a locale key (or a raw key name when the key
@@ -217,10 +234,6 @@ local function RowsWithLabel(labelKey)
         end
     end
     return found
-end
-
-local function AdvancedFrame()
-    return nil -- 高级区域已在 v2 移除；保留此名字只为让旧用例显式失败
 end
 
 ------------------------------------------------------------------------------
@@ -246,7 +259,7 @@ end
 --  Build
 ------------------------------------------------------------------------------
 
-T.test("Boot: 面板、状态条、主区域控件都建起来了，且没有报错", function()
+T.test("Boot: 面板、状态条、极简面板的三个部件都建起来了，且没有报错", function()
     Boot()
     local panel = Panel()
     T.notNil(panel, "设置分类面板 AutoSpellQueueOptionsPanel 应已创建")
@@ -254,25 +267,22 @@ T.test("Boot: 面板、状态条、主区域控件都建起来了，且没有报
     T.notNil(Stub.settingsCalls.registerCanvas, "应调用 Settings.RegisterCanvasLayoutCategory")
     T.notNil(Stub.settingsCalls.registerAddOn, "应调用 Settings.RegisterAddOnCategory")
 
-    T.notNil(RowOf("SETTING_ENABLED"), "主区域应有总开关行")
-    T.notNil(SwitchOf("SETTING_ENABLED"), "总开关行应有开关控件")
-    T.notNil(Badge(), "状态卡徽标应存在（总开关之下）")
-    T.notNil(BadgeText(Badge()), "徽标应有文字")
-    T.notNil(CardCurrentValue(), "状态卡应有当前值一行")
-
-    local fold = FindButtonByText(Core.L("ADVANCED_SHOW"))
-    T.isNil(fold, "高级折叠按钮已在 v2 移除（设置不该再分「高级」）")
+    T.notNil(MasterSwitch(), "标题行应有总开关")
+    T.notNil(StatusLine(), "应有一行状态")
+    T.notNil(SwitchOf("SETTING_SHOW_STATUS"), "应有显示悬浮状态条开关")
+    T.notNil(FindButtonByText(Core.L("BUTTON_RESET_POSITION")), "应有重置位置按钮")
+    -- 构建失败过去会留下半页/空页且没有任何说明——这里把它变成可见的失败
+    T.isNil(_G.ASQ_BUILD_ERROR, "面板构建不得有错误（实得 " .. tostring(_G.ASQ_BUILD_ERROR) .. "）")
 
     Options.Refresh()
-    T.notNil(Badge(), "刷新后徽标仍应存在")
-    T.truthy(Badge()._title ~= nil, "刷新后徽标应有状态标题")
+    T.notNil(StatusLine(), "刷新后状态行仍应存在")
 end)
 
-T.test("面板必须极简：只有两个开关，没有任何旋钮（守门用例）", function()
+T.test("面板必须极简：两个开关 + 一行状态 + 一个动作按钮，且不许出现长句（守门用例）", function()
     Boot()
     -- 玩家可见设置只有 enabled / showStatus，面板里就只允许这两个开关。
-    T.notNil(RowOf("SETTING_ENABLED"), "总开关")
-    T.notNil(RowOf("SETTING_SHOW_STATUS"), "状态条开关")
+    T.notNil(MasterSwitch(), "总开关")
+    T.notNil(SwitchOf("SETTING_SHOW_STATUS"), "状态条开关")
 
     -- v1 的旋钮必须一个都不剩（它们现在是算法的一部分，不再由玩家决定）。
     local removed = {
@@ -294,8 +304,18 @@ T.test("面板必须极简：只有两个开关，没有任何旋钮（守门用
     -- 保留的唯一按钮是「重置位置」：它是动作，不是参数。
     T.notNil(FindButtonByText(Core.L("BUTTON_RESET_POSITION")), "重置位置按钮应保留")
 
-    -- 脚注必须告诉玩家「这里没什么可调」，否则空面板会让人以为坏了。
-    T.truthy(#RowsWithLabel("PANEL_FOOTER") >= 1, "面板必须有一行说明「无需设置」的脚注")
+    -- 玩家反馈：说明太多，普通玩家不需要知道。所以面板里每一行都必须短，
+    -- 长解释只能出现在悬停提示里（提示不是 FontString，不会被这里扫到）。
+    local texts = VisibleTexts()
+    T.truthy(#texts <= 6, "面板可见文字不应超过 6 行（实得 " .. #texts .. "）")
+    for _, widget in ipairs(texts) do
+        T.truthy(#widget.text <= 60,
+            "面板里出现了长句（" .. #widget.text .. " 字节）：" .. widget.text)
+    end
+
+    -- 副标题/脚注这类整段说明必须已经从页面上消失
+    T.isNil(FindFontStringWithText(Core.L("PANEL_SUBTITLE")), "副标题不应再占用页面")
+    T.isNil(FindFontStringWithText(Core.L("PANEL_FOOTER")), "脚注不应再占用页面")
 end)
 
 T.test("修复: 滚动子框必须显式设宽（宽度为 0 会让整页空白，客户端实测过）", function()
@@ -321,81 +341,34 @@ T.test("修复: 滚动子框必须显式设宽（宽度为 0 会让整页空白�
     T.truthy(content:GetWidth() < 600, "内容宽度应小于滚动框（要留出内边距）")
 end)
 
-T.test("修复: 卡片里的多行文字必须留有整行间距（折行不许压到一起）", function()
+T.test("极简面板的布局：状态行在开关下方、按钮不重叠（几何断言）", function()
     Boot()
-    local card = Badge() and Badge().parent
-    T.notNil(card, "状态卡应存在")
+    local content = Stub.FindFrame("AutoSpellQueueOptionsScroll").__scrollChild
+    local title = FindFontStringWithText(Core.L("PANEL_TITLE"))
+    local status = StatusLine()
+    T.notNil(title, "标题应存在")
+    T.notNil(status, "状态行应存在")
 
-    -- 按 y 收集卡片里的所有文字行（结构判定，不靠文案）
-    local lines = {}
-    for _, widget in ipairs(Stub.Widgets()) do
-        if widget.parent == card and widget.__kind == "FontString" then
-            local point, _, _, _, y = widget:GetPoint()
-            if point == "TOPLEFT" and type(y) == "number" then
-                lines[#lines + 1] = { widget = widget, y = y }
-            end
-        end
-    end
-    table.sort(lines, function(a, b) return a.y > b.y end) -- 从上到下
-    T.truthy(#lines >= 3, "卡片应有公式行、采样行与状态提示行（实得 " .. #lines .. "）")
+    local statusRow = status.parent
+    local _, _, _, _, titleY = title.parent:GetPoint()
+    local _, _, _, _, statusY = statusRow:GetPoint()
+    local titleHeight = title.parent:GetHeight()
+    T.truthy(statusY <= titleY - titleHeight,
+        "状态行必须在标题行下方（标题行 y=" .. tostring(titleY) .. " h=" .. tostring(titleHeight) ..
+        "，状态行 y=" .. tostring(statusY) .. "）")
+    T.truthy(statusRow:GetHeight() <= 24, "状态行必须是单行高度")
 
-    local last = lines[#lines]
-    local secondLast = lines[#lines - 1]
+    local showRow = RowOf("SETTING_SHOW_STATUS")
+    local _, _, _, _, showY = showRow:GetPoint()
+    T.truthy(showY <= statusY - status:GetHeight(),
+        "显示开关必须落在状态行下方（状态行 y=" .. tostring(statusY) ..
+        " h=" .. tostring(status:GetHeight()) .. "，开关行 y=" .. tostring(showY) .. "）")
 
-    -- 中文没有空格：只开 SetWordWrap 客户端无处断行，会直接截断成「…」。
-    for _, entry in ipairs({ secondLast, last }) do
-        T.truthy(entry.widget.wordWrap == true,
-            "卡片文字行必须开启换行（y=" .. tostring(entry.y) .. "）")
-        T.truthy(entry.widget.nonSpaceWrap == true,
-            "中文长句还需要 SetNonSpaceWrap 才能在无空格处断行（y=" .. tostring(entry.y) .. "）")
-    end
-
-    -- 倒数第二行（采样说明）可能折成两行（约 2×14px），间距必须容得下。
-    -- 真机出现过 sampledLine -128 / hintLine -146 → 两行叠在一起。
-    T.truthy(secondLast.y - last.y >= 28,
-        "最后两行之间要留两行高度（实得 " .. tostring(secondLast.y - last.y) .. "）")
-
-    T.truthy(card:GetHeight() >= 200, "卡片高度要容得下折行后的内容")
-end)
-
-T.test("修复: 会换行的字体串必须有显式宽度（靠双锚点会被客户端截断成「…」）", function()
-    Boot()
-    -- 真机实测：副标题与脚注用 TOPLEFT+TOPRIGHT 取宽，中文长句被截成
-    -- 「…不需…」；而显式 SetWidth 的采样行正常折行。规律是「换行必须显式定宽」。
-    local function FindByText(key)
-        local text = Core.L(key)
-        for _, widget in ipairs(Stub.Widgets()) do
-            if widget.__kind == "FontString" and widget.text == text then return widget end
-        end
-        return nil
-    end
-
-    for _, key in ipairs({ "PANEL_SUBTITLE", "PANEL_FOOTER", "SETTING_ENABLED_HINT" }) do
-        local widget = FindByText(key)
-        T.notNil(widget, "找不到要检查的文本: " .. key)
-        T.truthy(widget.wordWrap == true, key .. " 必须开启换行")
-        T.truthy(widget.nonSpaceWrap == true, key .. " 必须允许无空格断行（中文）")
-        local width = widget:GetWidth()
-        T.truthy(type(width) == "number" and width > 0,
-            key .. " 必须有显式宽度（实得 " .. tostring(width) .. "）")
-        T.eq(widget:GetNumPoints(), 1,
-            key .. " 不应再靠左右双锚点取宽（那正是被截断的原因）")
-    end
-
-    -- 宽度必须在「测量高度之前」就位，否则换行后的行距会被算少，下一行会压上来。
-    -- 判定方式：副标题折行后的高度必须真的被算进间距里（开关行要落在它下方）。
-    local subtitle = FindByText("PANEL_SUBTITLE")
-    local height = subtitle:GetHeight()
-    T.truthy(height > 16, "副标题已折行，GetHeight 必须反映多行（实得 " .. tostring(height) .. "）")
-
-    -- 行与副标题都直接挂在 content 上，坐标系一致（标签是行的子级，不能直接比）。
-    local toggleRow = RowOf("SETTING_ENABLED")
-    T.notNil(toggleRow, "应有总开关行")
-    local _, _, _, _, subtitleY = subtitle:GetPoint()
-    local _, _, _, _, rowY = toggleRow:GetPoint()
-    T.truthy(rowY <= subtitleY - height,
-        "开关行必须落在副标题下方（副标题 y=" .. tostring(subtitleY) ..
-        " h=" .. tostring(height) .. "，行 y=" .. tostring(rowY) .. "）")
+    -- 状态行不许换行：它只有一行高度，换行会把下面的控件压上来
+    T.truthy(status:GetHeight() <= 24, "状态行必须是单行（实得高度 " .. tostring(status:GetHeight()) .. "）")
+    T.truthy(content:GetHeight() > 0, "内容高度必须为正")
+    T.truthy(content:GetHeight() < 200, "极简面板的内容高度不该超过 200（实得 " ..
+        tostring(content:GetHeight()) .. "）")
 end)
 
 T.test("UI 只构建一次：重复 Build / Refresh 不再新建控件", function()    Boot()
@@ -417,7 +390,7 @@ T.test("总开关：点击写入 Core.SetEnabled（真实配置）", function()
     Options.Refresh()
     T.truthy(Core.GetConfig().enabled)
 
-    local switch = SwitchOf("SETTING_ENABLED")
+    local switch = MasterSwitch()
     Click(switch)
     T.falsy(Core.GetConfig().enabled, "点击后配置里的 enabled 应为 false")
     T.falsy(Core.IsEnabled())
@@ -442,10 +415,10 @@ T.test("开关：只有 enabled 与 showStatus 两个，且都真的写进配置
 
     -- enabled：总开关写入后必须真的接管/归还
     Stub.SetCVarValue(150)
-    Click(SwitchOf("SETTING_ENABLED"))
+    Click(MasterSwitch())
     T.falsy(Core.GetConfig().enabled, "点击总开关应写入 enabled=false")
     T.eq(Stub.CVarValue(), "150", "关闭后必须归还玩家原本的值")
-    Click(SwitchOf("SETTING_ENABLED"))
+    Click(MasterSwitch())
     T.truthy(Core.GetConfig().enabled)
     T.eq(Stub.CVarValue(), "245", "重新打开后应立即接管")
 end)
@@ -480,30 +453,6 @@ T.test("面板不再暴露任何可调参数：Sanitize 会自动清掉旧存档
     Stub.worldLatency = 300
     Core.Refresh("after-migration")
     T.eq(Stub.CVarValue(), tostring(Core.GetStatus().target), "迁移后算法必须照常工作")
-end)
-
-T.test("修复: 带提示的行，标签必须顶对齐、提示在下方（否则两行字叠在一起）", function()
-    Boot()
-    -- 主区域的「启用自动调整」是唯一带提示的开关行。
-    local row = RowOf("SETTING_ENABLED")
-    T.notNil(row, "找不到启用开关所在的行")
-
-    local label, hint
-    for _, widget in ipairs(Stub.Widgets()) do
-        if widget.parent == row and widget.__kind == "FontString" then
-            if widget.text == Core.L("SETTING_ENABLED") then label = widget end
-            if widget.text == Core.L("SETTING_ENABLED_HINT") then hint = widget end
-        end
-    end
-    T.notNil(label, "行内应有标题")
-    T.notNil(hint, "行内应有提示文字")
-
-    local point, _, _, _, labelY = label:GetPoint()
-    T.eq(point, "TOPLEFT", "带提示的标签必须顶对齐；居中会被提示压住（真机上表现为两行字重叠）")
-
-    local _, _, _, _, hintY = hint:GetPoint()
-    T.truthy(hintY <= labelY - 18,
-        "提示必须落在标签下方（标签 y=" .. tostring(labelY) .. "，提示 y=" .. tostring(hintY) .. "）")
 end)
 
 T.test("修复: 内容必须放在滚动框里，且宿主高度不被内容撑大", function()
@@ -564,13 +513,10 @@ local STATE_CASES = {
     },
 }
 
-T.test("状态卡：六种状态各自的徽标/提示/当前值分支", function()
+T.test("状态行：六种状态各自的文案与颜色（失败必须一眼看见）", function()
     Boot()
-    local badge = Badge()
-    local badgeText = BadgeText(badge)
-    local currentValue = CardCurrentValue()
-    T.notNil(badgeText)
-    T.notNil(currentValue)
+    local line = StatusLine()
+    T.notNil(line, "面板应有一行状态")
 
     for _, case in ipairs(STATE_CASES) do
         local overrides = { state = case.state, live = case.live }
@@ -579,43 +525,48 @@ T.test("状态卡：六种状态各自的徽标/提示/当前值分支", functio
 
         WithStatus(FakeStatus(overrides), function()
             Options.Refresh()
+            local text = line.text
+            T.contains(text, Core.L(case.label), "[" .. case.name .. "] 状态行必须写明状态")
 
-            T.eq(badgeText.text, Core.L(case.label), "[" .. case.name .. "] 徽标文案")
-            T.truthy(type(badge._body) == "string" and #badge._body > 0,
-                "[" .. case.name .. "] 徽标应带解释文字")
-            T.contains(badge._body, string.sub(Core.L(case.hint), 1, 8),
-                "[" .. case.name .. "] 提示应来自 " .. case.hint)
-
-            if case.number ~= nil then
-                T.eq(currentValue.text, ExpectedMs(case.number),
-                    "[" .. case.name .. "] 当前值显示真实读到的数字")
+            -- 只在插件确实管着这个值时才显示数字（不许拿目标值冒充结果）
+            local managing = case.state ~= "disabled" and case.state ~= "error"
+                and case.state ~= "unavailable"
+            if managing and case.number ~= nil then
+                T.contains(text, ExpectedMs(case.number),
+                    "[" .. case.name .. "] 应显示实时读到的数字")
             else
-                T.eq(currentValue.text, Core.L("VALUE_UNAVAILABLE"),
-                    "[" .. case.name .. "] 读不到值时不得编造数字")
+                T.isNil(string.find(text, "%d"),
+                    "[" .. case.name .. "] 不该显示任何数字（实得：" .. text .. "）")
+            end
+
+            -- 颜色跟着状态走：error 必须是红的，否则「让玩家看见」就是空话
+            if case.state == "error" then
+                local r, g, b = line:GetTextColor()
+                T.truthy(r > g and r > b, "[" .. case.name .. "] 失败状态必须是暖色（醒目）")
             end
         end)
     end
 end)
 
-T.test("状态卡：写入失败的 error 优先于 disabled（失败必须让玩家看见）", function()
+T.test("状态行：写入失败的 error 优先于 disabled，且长度保持一行", function()
     Boot()
-    local badgeText = BadgeText(Badge())
+    local line = StatusLine()
     WithStatus(FakeStatus({
         enabled = false, state = "error", stateReasonKey = "ERR_VERIFY",
         live = nil, current = nil, lastApplied = nil, target = nil, baseline = nil,
         nilKeys = { "live", "current", "lastApplied", "target", "baseline" },
     }), function()
         Options.Refresh()
-        T.eq(badgeText.text, Core.L("STATE_ERROR"),
+        T.contains(line.text, Core.L("STATE_ERROR"),
             "关闭插件但写入失败时，必须显示 error 而不是 disabled")
-        T.eq(CardCurrentValue().text, Core.L("VALUE_UNAVAILABLE"), "读不到值时给出 unavailable 文案")
+        T.isNil(string.find(line.text, "%d"), "读不到值时不得编造数字")
+        T.truthy(#line.text <= 40, "状态行必须短（实得 " .. #line.text .. " 字节）")
     end)
 end)
 
-T.test("状态卡：错误提示里带可本地化的失败原因，不显示目标数字冒充结果", function()
+T.test("状态行：失败原因放在悬停提示里，不把目标值当结果显示", function()
     Boot()
-    local badge = Badge()
-    local currentValue = CardCurrentValue()
+    local line = StatusLine()
     local status = FakeStatus({
         state = "error", stateReason = "rejected", stateReasonKey = "ERR_REJECTED",
         lastError = "rejected", live = nil, current = nil, lastApplied = nil, target = 245,
@@ -624,9 +575,34 @@ T.test("状态卡：错误提示里带可本地化的失败原因，不显示目
     })
     WithStatus(status, function()
         Options.Refresh()
-        T.contains(badge._body, Core.L("ERR_REJECTED"), "提示必须写出失败原因")
-        T.ne(currentValue.text, ExpectedMs(245), "绝不能把目标值当成当前值显示")
-        T.eq(currentValue.text, Core.L("VALUE_UNAVAILABLE"))
+        -- 页面上只留短状态；长解释在悬停提示里（下一个用例验证它没丢）
+        T.contains(line.text, Core.L("STATE_ERROR"))
+        T.isNil(string.find(line.text, ExpectedMs(245), 1, true),
+            "绝不能把目标值当成当前值显示")
+    end)
+end)
+
+T.test("状态行：失败原因与算式都在悬停提示里（移到提示≠丢掉信息）", function()
+    Boot()
+    local line = StatusLine()
+    WithStatus(FakeStatus({
+        state = "error", stateReason = "rejected", stateReasonKey = "ERR_REJECTED",
+        lastError = "rejected", live = nil, current = nil, lastApplied = nil, target = 245,
+        lastErrorAt = Stub.now,
+        nilKeys = { "live", "current", "lastApplied" },
+    }), function()
+        Options.Refresh()
+        if _G.GameTooltip then _G.GameTooltip.lines = {} end
+        -- 提示挂在父帧上：字体串在客户端收不到鼠标事件（真机上因此抛过 HookScript nil）
+        local host = line.parent
+        local handler = host and host.__scripts and host.__scripts.OnEnter
+        T.notNil(handler, "状态行必须有悬停提示（挂在可接收鼠标事件的帧上）")
+        handler(host)
+        T.truthy(_G.GameTooltip and #_G.GameTooltip.lines > 0, "提示必须有内容")
+        local joined = table.concat(_G.GameTooltip.lines, "\n")
+        T.contains(joined, Core.L("PANEL_SUBTITLE"), "提示要说明这个插件做什么")
+        T.contains(joined, Core.L("PANEL_FOOTER"), "提示要给出诊断与逃生口的入口")
+        T.truthy(string.find(joined, "ms", 1, true) ~= nil, "提示里要给出算式（带 ms 的数字）")
     end)
 end)
 
@@ -678,9 +654,9 @@ T.test("P1 集成：真实写入被拒后，面板显示 error 且不冒充目�
     T.eq(Stub.CVarValue(), "150", "客户端值未被改动")
 
     Options.Refresh()
-    local badge = Badge()
-    T.eq(BadgeText(badge).text, Core.L("STATE_ERROR"), "面板必须显示 error")
-    T.contains(badge._body, Core.L("ERR_REJECTED"), "面板必须说明原因")
+    local line = StatusLine()
+    T.contains(line.text, Core.L("STATE_ERROR"), "面板必须显示 error")
+    T.isNil(string.find(line.text, "%d"), "失败时状态行不得显示数字")
 
     local bar = StatusBar()
     bar:Show()
@@ -689,9 +665,11 @@ T.test("P1 集成：真实写入被拒后，面板显示 error 且不冒充目�
     T.eq(bar._text.text, Core.L("STATE_ERROR"), "状态条在失败时不能显示数字")
     T.isNil(string.find(bar._text.text, "%d"))
 
-    local currentText = CardCurrentValue().text
-    T.eq(currentText, ExpectedMs(150), "当前值显示客户端真实值 150")
-    T.ne(currentText, ExpectedMs(245), "绝不能显示目标值 245 冒充已应用")
+    -- 原因与细节在悬停提示里（失败原因不能丢）
+    local host = line.parent
+    if _G.GameTooltip then _G.GameTooltip.lines = {} end
+    host.__scripts.OnEnter(host)
+    T.truthy(_G.GameTooltip and #_G.GameTooltip.lines > 0, "失败时提示必须有内容")
 end)
 
 ------------------------------------------------------------------------------
