@@ -33,4 +33,4 @@ pwsh tools/verify.ps1 -Package # 追加打包：dist/AutoSpellQueue-<version>.zi
   位运算符、`table.unpack`、`setfenv`、`loadstring`、`math.mod`、`newproxy`（lint 会拦）。
 - **不写会烂的数字**：版本号只从 `.toc` 读；测试数量、包体积、哈希这类改成「用哪条命令取」。
 - 不提交任何密钥；CI 只引用 secret 名称（如 `CF_API_KEY`），值只存在于 GitHub Secrets。
-- 版本号改动顺序：先写 `CHANGELOG.md` 条目（中英双语）→ 再改 `.toc` → 再跑 `verify.ps1`。
+- 版本号改动顺序：先写 `CHANGELOG.md` 条目（简体 / 繁體 / English 三语）→ 再改 `.toc` → 再跑 `verify.ps1`。

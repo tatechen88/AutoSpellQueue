@@ -63,7 +63,7 @@ local STRINGS = {
     ---------------------------------------------------------------------------
     ["ERR_READONLY"] = {
         "客户端把 SpellQueueWindow 标为只读，无法写入。",
-        "客戶端把 SpellQueueWindow 標為唯讀，無法寫入。",
+        "用戶端把 SpellQueueWindow 標為唯讀，無法寫入。",
         "The client reports SpellQueueWindow as read-only, so it cannot be written.",
     },
     ["ERR_COMBAT"] = {
@@ -78,7 +78,7 @@ local STRINGS = {
     },
     ["ERR_REJECTED"] = {
         "客户端拒绝了这次写入。",
-        "客戶端拒絕了這次寫入。",
+        "用戶端拒絕了這次寫入。",
         "The client rejected this write.",
     },
     ["ERR_VERIFY_FAILED"] = {
@@ -88,7 +88,7 @@ local STRINGS = {
     },
     ["ERR_NO_API"] = {
         "当前客户端没有可用的 CVar 写入接口。",
-        "目前客戶端沒有可用的 CVar 寫入介面。",
+        "目前用戶端沒有可用的 CVar 寫入介面。",
         "This client has no usable CVar write API.",
     },
     ["ERR_INVALID_VALUE"] = {
@@ -235,7 +235,7 @@ local STRINGS = {
     },
     ["HINT_NO_LATENCY"] = {
         "客户端还没报告延迟，暂按基础值。",
-        "客戶端還沒回報延遲，暫按基礎值。",
+        "用戶端還沒回報延遲，暫按基礎值。",
         "The client has not reported latency yet, so the base value is used for now.",
     },
     ["HINT_IMPORTED"] = {
@@ -386,7 +386,7 @@ local STRINGS = {
     ---------------------------------------------------------------------------
     ["CVAR_MISSING"] = {
         "客户端不认识这个 CVar",
-        "客戶端不認得這個 CVar",
+        "用戶端不認得這個 CVar",
         "The client does not know this CVar",
     },
     ["CVAR_NORMAL"] = { "正常", "正常", "Normal" },
