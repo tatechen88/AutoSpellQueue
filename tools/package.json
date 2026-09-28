@@ -1,0 +1,15 @@
+{
+  "name": "autospellqueue-tools",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Local verification toolchain for the AutoSpellQueue addon. Not shipped in the release zip.",
+  "type": "module",
+  "scripts": {
+    "check": "node check-syntax.mjs",
+    "test": "node run-tests.mjs"
+  },
+  "devDependencies": {
+    "fengari": "^0.1.4",
+    "luaparse": "^0.3.1"
+  }
+}

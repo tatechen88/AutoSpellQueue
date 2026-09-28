@@ -1,169 +1,260 @@
-# Tate_ASQ
+# AutoSpellQueue
 
-**Tate's AutoSpellQueue** — 魔兽世界正式服（12.x）插件。
+**自动把「施法队列窗口」（`SpellQueueWindow`）调整到适合你职业专精与网络延迟的值，并在插件不工作时把你原来的值放回去。**
 
-**By Tate Chen**
+魔兽世界正式服（12.x）插件 · 版本 **2.0.0** · 作者 **Tate Chen** · 许可证 **MIT** · 语言 **enUS / zhCN / zhTW**
 
-自动根据职业/专精、网络延迟与当前场景，调整 `SpellQueueWindow`（施法队列窗口 / 施法容错）。
+> 原名 **Tate_ASQ / Tate's AutoSpellQueue**。v2.0.0 起更名为 **AutoSpellQueue**，插件文件夹名也随之改变（升级说明见下）。
 
 ---
 
-## 这是什么？为什么有用？
+## 它做什么 / 它不做什么
 
-魔兽的「施法队列窗口」决定：**你可以在当前技能/GCD 结束前多少毫秒预输入下一个技能**。
+**做一件事**：读写客户端的 `SpellQueueWindow`（单位毫秒，可用范围 0–400，客户端默认 400）。这个值决定你能在「当前技能/GCD 结束前多少毫秒」预输入下一个技能。值偏小容易断档，值偏大技能会发黏。
 
-- 值太小：网络稍有延迟，技能之间容易断档，损失输出。
-- 值太大：技能会「太黏」，容易把不该排的技能排进去，近战尤其明显。
+**明确不做**：
 
-暴雪默认值是 400ms，对多数人偏高。Tate_ASQ 会根据职业/专精和当前网络，帮你自动设到更合适的值。
+- ❌ 不自动施法、不代打输出循环、不模拟按键、不做任何战斗自动化；
+- ❌ 不读取战斗日志做决策，不替你判断该放什么技能；
+- ❌ 不联网、无遥测、不上传任何玩家数据（整个插件没有任何网络请求）；
+- ❌ 不修改暴雪文件，不注入代码。
+
+它改的只是一个**你自己也能用 `/console SpellQueueWindow 200` 改**的本地客户端设置。
+
+---
+
+## 安装与升级
+
+1. 下载发布包 zip（[GitHub Releases](https://github.com/tatechen88/AutoSpellQueue/releases)）。
+2. 解压得到 `AutoSpellQueue` 文件夹，放到：
+
+   ```
+   World of Warcraft\_retail_\Interface\AddOns\AutoSpellQueue\
+   ```
+
+3. 进入游戏，插件默认启用。
+
+**从旧版（Tate_ASQ / Tate's AutoSpellQueue）升级：必须先删除旧的 `Tate_ASQ` 文件夹。**
+
+旧插件和新插件是两个不同的插件，同时存在会互相争抢同一个 CVar；而且两个 `.toc` 都会声明旧的存档变量。删除旧文件夹后，你原来的设置会在第一次登录时**自动导入一次**，不需要手动配置。
 
 ---
 
 ## 工作原理
 
-### 1. 职业/专精基础值
+最终值由三层算出来，任何一层都可以在设置面板里改：
 
-插件内置一张草表（`Tate_ASQ_Formula.lua`），按职业/专精给基础值。原则：
+### 1）职业 / 专精基础值
 
-- 高 APM 近战 / 连击点职业（盗贼、踏风）：140ms 左右，保持反应速度。
-- 标准近战（战士、惩戒等）：150ms。
-- 坦克（防战、血 DK 等）：160ms，稍微方便排减伤。
-- 远程瞬发（兽王猎）：190ms。
-- 读条法系（火法、毁灭术等）：240ms 左右，保证读条衔接。
-- 其他远程/治疗：介于中间。
+插件内置一张按专精的基础值表（`AutoSpellQueue_Formula.lua`）：高 APM 近战（盗贼、踏风）约 140，标准近战约 150，坦克略高（便于排减伤），远程瞬发偏低，读条法系约 240。未知专精（新职业、低等级、数据缺失）按职业回退，再回退到兜底值，**永远不会算出 nil**。
 
-### 2. 网络延迟自适应
+### 2）网络延迟自适应
 
-插件读取 `GetNetStats()` 的 **World（世界/战斗服务器）延迟**：
+读取 `GetNetStats()` 的延迟（默认用 **World**，World 为 0 时回退 Home；也可切换为 Home / 平均 / 取大）：
 
 ```
-延迟需求 = World延迟 + 50ms 余量
-最终值   = clamp( max(职业基础值, 延迟需求), 50, 400 )
+延迟需求 = 所选延迟 + 余量（默认 50 ms）
+目标值   = max(基础值, 延迟需求)
 ```
 
-- 网络好：延迟需求低于基础值 → 用基础值。
-- 网络差：延迟需求超过基础值 → 用延迟算出的更高值。
-- World 延迟不可用时，回退使用 Home 延迟。
+网络好时用基础值，网络差时自动抬高。
 
-### 3. 城市 / 副本不同算法
+### 3）场景
 
-| 场景 | 计算方式 | 原因 |
+| 场景 | 算法 | 原因 |
 |---|---|---|
-| 城市（安全区） | 直接用职业基础值 | 城市里没有战斗，不需要追延迟 |
-| 副本 / 团本 | 基础值 + 延迟自适应 | 战斗强度最高，保证技能不断档 |
-| 野外 | 基础值 + 延迟自适应 | 可能发生战斗/PvP |
+| 城市（安全区） | 只用基础值 | 城里没有战斗，不需要追延迟 |
+| 副本 / 团本 | 基础值 + 延迟自适应 | 战斗强度最高，避免断档 |
+| 野外 | 基础值 + 延迟自适应 | 可能随时进战斗 / PvP |
 
-判断方式：
+判定方式：`IsInInstance()` → 副本；否则沿地图层级向上找 `IsCityMap` 标记 → 城市；其余为野外。
 
-- 副本/团本：`IsInInstance()`
-- 城市：`C_Map.GetMapInfo` 的 `IsCityMap` 标记
-- 其余视为野外
+最后统一 `clamp(round(目标值), minWindow, maxWindow)`，默认 50–400 ms。
 
-### 4. 什么时候会重新计算并写入
+### 4）什么时候会重新计算
 
-- 进入游戏（`PLAYER_ENTERING_WORLD`）
-- 切换专精/天赋（`PLAYER_SPECIALIZATION_CHANGED`）
-- 场景变化，例如进出副本、进出城市（`ZONE_CHANGED_NEW_AREA`）
-- 在设置页手动修改配置
+- 进入世界 / 切换区域（`PLAYER_ENTERING_WORLD`、`ZONE_CHANGED*`）；
+- 切换专精（`PLAYER_SPECIALIZATION_CHANGED`，只认玩家自己）；
+- 游戏内 CVar 被改动（`CVAR_UPDATE`，0.5 秒防抖）；
+- 你在设置面板里改配置；
+- **启用期间每 15 秒**重新评估一次（延迟是会变的，不能只在换区域时才更新）；
+- 登录后 2 / 5 / 10 / 20 / 40 秒补算几次，直到客户端能报出非零延迟为止；
+- 脱战瞬间（`PLAYER_REGEN_ENABLED`）重新评估。
 
-没有定时器，不做周期性覆盖。战斗中触发的写入会推迟到脱战。
+### 默认设置
 
----
-
-## 主要功能
-
-- 默认启用。
-- 基础值模式：
-  - **自动**：按职业/专精表。
-  - **手动**：使用你指定的固定基础值。
-- 延迟自适应可开关。
-- 悬浮状态条只显示当前 `SpellQueueWindow` 值，可拖动，左键点击打开设置。
-- 状态条字体可选（WoW 内置 / LibSharedMedia，若存在），字号可调，状态条随字号自动缩放。
-- 设置页顶部显示**计算式**，让你知道当前值是怎么来的。
-- 中英文自动切换（zhCN / zhTW / 英文兜底）。
-- 关闭插件时，若当前值仍是本插件最后写入的值，会恢复启用前的旧值。
-
----
-
-## 设置入口
-
-- 游戏菜单 → 选项 → 插件 → 施法容错。
-- 悬浮状态条左键点击。
-
----
-
-## 安装
-
-1. 下载最新版：[Tate_ASQ-v1.0.2.zip](https://github.com/tatechen88/Tate_ASQ/releases/download/v1.0.2/Tate_ASQ-v1.0.2.zip)
-2. 解压后把 `Tate_ASQ` 文件夹放到 `World of Warcraft\_retail_\Interface\AddOns\`。
-3. 进入游戏，插件会自动启用。
-
----
-
-## 默认参数
-
-| 参数 | 默认值 | 说明 |
+| 设置 | 默认 | 说明 |
 |---|---|---|
-| enabled | true | 总开关 |
-| baseMode | auto | auto = 职业/专精表；manual = 手动 |
-| manualBase | 200 | 手动模式基础值 |
-| adaptive | true | 是否叠加延迟自适应 |
-| latencySource | world | 固定世界延迟，World 不可用时回退 Home |
-| margin | 50 | 延迟余量 |
-| minWindow | 50 | 最终值下限 |
-| maxWindow | 400 | 最终值上限 |
-| hysteresis | 10 | 写入迟滞 |
-| showStatus | true | 显示悬浮状态条 |
-| statusFont | Fonts\FRIZQT__.TTF | 状态条字体 |
-| statusFontSize | 12 | 状态条字号 |
+| 启用 | 开 | 总开关 |
+| 基础值模式 | 自动 | 自动 = 按专精表；手动 = 你指定固定基础值 |
+| 手动基础值 | 200 ms | 仅手动模式生效 |
+| 延迟自适应 | 开 | 关掉后只用基础值 |
+| 延迟来源 | World | World / Home / 平均 / 取大 |
+| 余量 | 50 ms | 加在延迟上 |
+| 下限 / 上限 | 50 / 400 ms | 最终值范围 |
+| 迟滞 | 10 ms | 已经接管后，差值小于它就不来回改 |
+| 状态条 | 显示 | 悬浮显示当前值，可拖动、记忆位置 |
+| 状态条字体 / 字号 | `Fonts\FRIZQT__.TTF` / 12 | |
+| 聊天提示 | 关 | 每次改值都在聊天框报告 |
 
 ---
 
-## 文件结构
+## 所有权与恢复语义（它和「写一次就不管」的区别）
 
+插件只在自己「接管」这个 CVar 时才认为有权写它，接管时会记录**接管前的玩家原值（baseline）**：
+
+- **写入必须验证**：`SetCVar` 只有在「API 没有拒绝」**且**「读回的值与目标一致」时才算成功。只 `pcall` 不报错**不等于**写成功（这是旧版最严重的问题：写入静默失败，界面却显示已生效）。写入失败会保留所有权、在状态里显示失败原因，并在下一次刷新重试。
+- **只在自己的值上恢复**：关闭插件时，只有当当前值**仍然等于插件最后写入的值**，才会写回 baseline；如果这期间你（或别的插件）改过值，插件只放弃所有权，**绝不覆盖你的修改**。
+- **登出前归还**：`PLAYER_LOGOUT` 会把 baseline 写回去，客户端随后保存设置；万一这次归还失败，所有权记录已经持久化，下次登录仍能归还。
+- **战斗中不写**：战斗中不写 CVar（状态显示 `pending`），脱战后**重新读取当时的状态再决策**——不会把战斗前算出的旧目标硬套上去。这条对「应用」和「归还」一视同仁：战斗中关闭插件，归还也会等到脱战。
+- **配置会校验**：存档里的越界值、错类型、上下限颠倒、坏掉的所有权记录都会被修正回默认值，修正次数记录在统计里；比当前版本更新的存档（未来版本写的）**不会被降级改写**。
+- **错误不静默**：写入/读取错误一定会出现在聊天框（同一条错误 120 秒内不重复刷屏），即使你关掉了聊天提示。
+
+---
+
+## 常见问题
+
+**延迟变化多久生效？**
+插件每 15 秒重新评估一次；但客户端的 `GetNetStats()` 自身大约每 30 秒才刷新一次延迟读数，所以从网络真的变化到写入完成，通常几十秒内（最坏约 30 秒 API 刷新 + 最多 15 秒轮询 ≈ 45 秒）。这是两个不同的时间，别把它们混在一起。
+
+**为什么我在战斗中看不到它生效？**
+战斗中不写 CVar（这是插件的硬约束，避免战斗中的意外改动）。状态会显示「等待中（pending）」，脱战后立刻重新决策并写入。战斗中关闭插件也一样：归还玩家原值的动作会推迟到脱战。
+
+**为什么我关掉插件后值会变回去？**
+那是设计行为：关闭插件 = 归还你自己原来的值。
+
+**为什么关掉插件后值没有变回去？**
+说明这个值已经不是你接管前的那个值了——你在插件管理期间自己改过它，或者别的插件改过。这种情况插件只放弃所有权，不覆盖你现在的设置，这是刻意的。
+
+**装完发现补丁后还是要等一会儿才准？**
+登录后插件会按 2/5/10/20/40 秒补算，直到客户端报出非零延迟；副本切换、切专精都会立刻重算。
+
+**会不会和我装的别的插件打架？**
+如果有另一个插件也在管 `SpellQueueWindow`，两边会互相把对方视为「外部改动」并放弃所有权，最终值取决于谁最后写。建议同一时间只留一个。
+
+**我想彻底卸载，怎么让数值干净地还原？**
+先在游戏内**关闭插件**（或正常登出一次），确认状态显示已恢复原值，然后再删除 `AutoSpellQueue` 文件夹。插件文件删掉之后，它就没机会再归还了。
+
+**我的设置存哪？**
+存档变量 `AutoSpellQueueDB`（`WTF\Account\<账号>\SavedVariables\`），只包含配置和一条所有权记录（baseline / 最后写入值 / 时间戳）。没有别的数据。旧存档 `Tate_ASQDB` 会**一次性**导入后清空。
+
+---
+
+## 命令
+
+| 命令 | 作用 |
+|---|---|
+| `/asq` | 打开设置面板（等价命令：`/autospellqueue`） |
+| `/asq status` | 打印诊断（状态、当前值 / 目标值、World 与 Home 延迟、专精与定位、场景、所有权与 baseline、计数与错误） |
+| `/asq reset` | 重置全部设置为默认值（含悬浮状态条位置；不影响已接管的值） |
+| `/asq unlock` | 重置悬浮状态条位置 |
+
+设置面板入口：**游戏菜单 → 选项 → 插件 → AutoSpellQueue**，或左键点状态条。
+
+---
+
+## 开发与验证
+
+本机没有 `lua` / `luac`，验证走 Node 工具链（语法用 `luaparse` 按 Lua 5.1 解析，单元测试用 `fengari` 按 Lua 5.3 执行，因此代码必须 5.1/5.3 双兼容）：
+
+```powershell
+npm --prefix tools install     # 一次性，安装 luaparse / fengari
+node tools/check-syntax.mjs    # 语法检查（仓库内全部 .lua）
+node tools/run-tests.mjs       # 单元测试（公式 / CVar / 核心状态机）
+pwsh tools/verify.ps1          # 一条命令：语法 → 单测 → 结构/版本一致性
+pwsh tools/verify.ps1 -Package # 再生成 dist/AutoSpellQueue-<版本>.zip
 ```
-Tate_ASQ.toc
-Tate_ASQ_Formula.lua    -- 纯计算：职业/专精基础值 + 延迟 + 场景
-Tate_ASQ.lua            -- 运行时：事件、CVar 读写、恢复逻辑
-Tate_ASQ_Options.lua    -- 设置窗口、状态条、标准选项页
-```
+
+任何声称「已完成」的改动，都要贴出实际命令与输出，见 [`AGENTS.md`](AGENTS.md)。
+
+### 仓库结构
+
+| 路径 | 说明 |
+|---|---|
+| `AutoSpellQueue.toc` | 插件清单（版本、加载顺序、元数据） |
+| `AutoSpellQueue_Locale.lua` | 全部显示字符串（enUS / zhCN / zhTW 三套键集一致，其他语言回退 enUS） |
+| `AutoSpellQueue_Formula.lua` | 纯计算：专精 / 延迟 / 场景 → 目标值（不调用任何游戏 API） |
+| `AutoSpellQueue_CVar.lua` | 唯一读写 `SpellQueueWindow` 的模块（写入 + 读回双重验证） |
+| `AutoSpellQueue.lua` | 配置校验与迁移、所有权状态机、事件、定时评估 |
+| `AutoSpellQueue_Options.lua` | 设置面板、悬浮状态条、斜杠命令 |
+| `tests/`、`tools/`、`docs/` | 开发用，不进发布包 |
+
+发布包（zip）根目录必须是 `AutoSpellQueue/`，且只含上面 6 个运行期文件。接口契约见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
 ---
 
-## 注意
+## 许可证
 
-- `GetNetStats()` 约 30 秒才更新一次；延迟变化后，最长约 30 秒才能在下一次重算时体现。
-- 职业/专精基础值草表可在 `Tate_ASQ_Formula.lua` 顶部调整。
-
----
-
-## 繁體中文說明
-
-**Tate_ASQ** 是《魔獸世界》正式服（12.x）插件，會依職業/專精、網路延遲與目前場景，自動調整 `SpellQueueWindow`（施法佇列視窗 / 施法容錯）。
-
-- 預設啟用。
-- 城市：直接使用職業/專精基礎值。
-- 副本 / 野外：基礎值 + 世界延遲自適應（World 優先，Home 回退）。
-- 進入遊戲、切換專精、進出副本/城市時自動重新計算。
-- 懸浮狀態條顯示目前值，可拖曳、可記憶位置、可調整字體與字號。
-- 設定入口：選項 → 插件 → 施法容錯；或左鍵點擊狀態條。
-- 支援繁體中文（zhTW）、簡體中文（zhCN）與英文。
-
-下載：https://github.com/tatechen88/Tate_ASQ/releases/download/v1.0.2/Tate_ASQ-v1.0.2.zip
+MIT，© 2026 Tate Chen，全文见 [`LICENSE`](LICENSE)。
 
 ---
 
 ## English
 
-**Tate_ASQ** is a World of Warcraft retail (12.x) addon that automatically adjusts `SpellQueueWindow` based on your class/spec, current latency, and location.
+**AutoSpellQueue automatically keeps the spell queue window (`SpellQueueWindow`) tuned to your class, spec and latency — and puts your own value back when the addon stops managing it.**
 
-- Enabled by default.
-- City: uses the class/spec base value directly.
-- Instance / open world: base value + world latency adaptation (World first, Home fallback).
-- Recalculates on entering game, changing spec, or changing zone (city / instance / open world).
-- Floating status bar shows the current value; draggable, remembers position, font and size adjustable.
-- Settings: Options → AddOns → 施法容错, or left-click the status bar.
-- Supports English, Simplified Chinese (zhCN), and Traditional Chinese (zhTW).
+World of Warcraft retail (12.x) · version **2.0.0** · by **Tate Chen** · **MIT** licensed · languages **enUS / zhCN / zhTW**
 
-Download: https://github.com/tatechen88/Tate_ASQ/releases/download/v1.0.2/Tate_ASQ-v1.0.2.zip
+Formerly **Tate_ASQ / Tate's AutoSpellQueue**; renamed in v2.0.0 (the addon folder name changed too).
 
+### What it does / what it does not do
+
+It does exactly one thing: it reads and writes the client's `SpellQueueWindow` CVar (milliseconds, usable range 0–400, client default 400), which decides how early you can queue your next spell before the current cast/GCD ends.
+
+It does **not** automate casting, does **not** run a rotation, does **not** press keys or make combat decisions, reads no combat log, and makes **no network requests, no telemetry, no data uploads**. It only changes a local client setting you could change yourself with `/console SpellQueueWindow 200`.
+
+### Install / upgrade
+
+1. Download the latest zip from [GitHub Releases](https://github.com/tatechen88/AutoSpellQueue/releases).
+2. Unzip so that you get `World of Warcraft\_retail_\Interface\AddOns\AutoSpellQueue\`.
+3. Log in — the addon is enabled by default.
+
+**Upgrading from the old version: delete the old `Tate_ASQ` folder first.** Old and new are two separate addons that would fight over the same CVar. Your old settings are imported once automatically on first login.
+
+### How it works
+
+1. **Base value** per spec (roughly 140 ms for high-APM melee, ~150 ms for standard melee, slightly higher for tanks, ~240 ms for casters). Unknown specs fall back to the class value, then to a safe default — never nil.
+2. **Latency adaptation** using `GetNetStats()` (World by default, falling back to Home; Home / average / max selectable): `target = max(base, latency + margin)`, margin default 50 ms.
+3. **Context**: cities (safe areas) use the base value only; instances and the open world use latency adaptation. Finally the value is clamped to `[minWindow, maxWindow]` (default 50–400 ms).
+4. **Re-evaluated** on entering the world, zone changes, spec changes, external CVar edits (0.5 s debounce), config changes, **every 15 seconds while enabled**, and a few times after login (2/5/10/20/40 s) until the client reports non-zero latency.
+
+### Ownership and restore semantics
+
+The addon records the value you had **before** it took over (the baseline), and only writes when it can verify the write (API accepted it **and** reading the CVar back returns the requested value). A bare `pcall` success is not treated as success. While disabled, it restores the baseline only if the current value is still the one it wrote; if you or another addon changed it, it just releases ownership and never overwrites you. On `PLAYER_LOGOUT` it puts your value back, and the persisted ownership record lets the next session finish the job if that write failed. It never writes during combat — the status shows `pending` and the decision is re-made from live state when combat ends, and the same rule applies to the restore (disabling in combat is deferred until combat ends).
+
+### Commands
+
+`/asq` (open settings — `/autospellqueue` also works), `/asq status` (print diagnostics), `/asq reset` (reset settings), `/asq unlock` (reset status bar position). Settings panel: Game Menu → Options → AddOns → AutoSpellQueue.
+
+### FAQ
+
+- **How fast does latency take effect?** The addon re-evaluates every 15 s, but `GetNetStats()` itself only refreshes roughly every 30 s; expect the change within tens of seconds (worst case ≈ 30 s API refresh + up to 15 s poll).
+- **Why nothing happens in combat?** Writing is deliberately skipped in combat; it happens right after combat ends, based on freshly read state. Disabling the addon during combat is handled the same way — the restore waits for combat to end.
+- **Why did the value change back when I disabled the addon?** That is the restore: your original value comes back. If it did *not* change back, someone else changed the value in the meantime — the addon refuses to overwrite that.
+- **Uninstalling cleanly:** disable the addon in game (or log out once) so it can restore your value, then delete the folder.
+
+### Development
+
+```powershell
+npm --prefix tools install
+node tools/check-syntax.mjs
+node tools/run-tests.mjs
+pwsh tools/verify.ps1
+pwsh tools/verify.ps1 -Package
+```
+
+No `lua` binary is required: syntax is parsed with `luaparse` (Lua 5.1) and tests run under `fengari` (Lua 5.3), so the code stays 5.1/5.3 compatible. Paste real output before claiming anything is done.
+
+---
+
+## 繁體中文（摘要）
+
+**AutoSpellQueue** 是《魔獸世界》正式服（12.x）插件，會依職業／專精、網路延遲與目前場景，自動調整 `SpellQueueWindow`（施法佇列視窗），並在插件停用時把你自己原本的值放回去。原名 **Tate_ASQ**，v2.0.0 起更名。
+
+- 只改一個本機 CVar（0–400 ms，客戶端預設 400），**不會自動施法、不做戰鬥自動化、不連網、不上傳任何資料**。
+- 城市＝基礎值；副本／野外＝`max(基礎值, 延遲 + 餘量)`，最後 clamp 到上下限。
+- 啟用期間每 15 秒重新評估；戰鬥中不寫入，脫戰後重新決策；關閉插件或登出時歸還原值。
+- 從舊版升級**請先刪除 `Tate_ASQ` 資料夾**，舊設定會自動匯入一次。
+- 指令：`/asq`、`/asq status`、`/asq reset`、`/asq unlock`。
+
+詳細說明請看上面的中文與英文段落。

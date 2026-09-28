@@ -1,4 +1,14 @@
+# Packaging output
+dist/
 *.zip
 *.rar
 *.7z
-.wow-api-stub/
+
+# Local verification toolchain (run: npm --prefix tools install)
+tools/node_modules/
+
+# Editor / OS noise
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

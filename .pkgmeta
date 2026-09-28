@@ -1,0 +1,29 @@
+# BigWigs packager configuration for AutoSpellQueue.
+# Docs: https://github.com/BigWigsMods/packager
+#
+# The release zip must contain exactly 6 runtime files inside AutoSpellQueue/:
+#   AutoSpellQueue.toc + AutoSpellQueue_Locale.lua + AutoSpellQueue_Formula.lua
+#   + AutoSpellQueue_CVar.lua + AutoSpellQueue.lua + AutoSpellQueue_Options.lua
+# Everything listed under "ignore" must stay out of the package.
+
+package-as: AutoSpellQueue
+
+# No embedded libraries in this addon, so no "-nolib" variant is needed.
+enable-nolib-creation: no
+
+ignore:
+  - .gitignore
+  - .gitattributes
+  - .github
+  - .pkgmeta
+  - .scratch
+  - AGENTS.md
+  - CHANGELOG.md
+  - HANDOFF.md
+  - LICENSE
+  - README.md
+  - docs
+  - tests
+  - tools
+  - node_modules
+  - dist
