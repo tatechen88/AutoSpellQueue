@@ -265,7 +265,13 @@ local function newRegion(kind)
         local relTop, relHeight = p.rel:GetTop() or 0, p.rel:GetHeight() or 0
         local point = p.point
         if point == "BOTTOMLEFT" or point == "BOTTOMRIGHT" or point == "BOTTOM" then
-            return relTop + p.y + height
+            -- For BOTTOM* anchors y is measured UP from the relative frame's
+            -- bottom edge. Using relTop here (as this stub first did) put frames
+            -- anchored to the screen bottom a screen-height too high, which hid a
+            -- real placement bug: a tooltip below a bottom-anchored bar would have
+            -- looked like it fit.
+            local relBottom = relTop - relHeight
+            return relBottom + p.y + height
         end
         if point == "LEFT" or point == "RIGHT" or point == "CENTER" then
             if p.relPoint == "TOP" or p.relPoint == "TOPLEFT" or p.relPoint == "TOPRIGHT" then
@@ -638,7 +644,26 @@ _G.GameTooltip = {
     owner = nil,
 }
 
-function _G.GameTooltip:SetOwner(owner) self.owner = owner end
+function _G.GameTooltip:SetOwner(owner, anchor)
+    self.owner = owner
+    self.anchor = anchor
+    -- ANCHOR_NONE means the addon places the tooltip itself; remember that the
+    -- old client-side anchoring is no longer in play.
+    if anchor ~= nil then self.point = nil end
+end
+function _G.GameTooltip:ClearAllPoints() self.point = nil end
+function _G.GameTooltip:SetPoint(point, relTo, relPoint, x, y)
+    self.point = { point = point, relTo = relTo, relPoint = relPoint, x = x or 0, y = y or 0 }
+end
+function _G.GameTooltip:GetPoint()
+    local p = self.point
+    if not p then return nil end
+    return p.point, p.relTo, p.relPoint, p.x, p.y
+end
+function _G.GameTooltip:SetClampedToScreen(clamped) self.clamped = clamped and true or false end
+--- Tooltip height used by placement tests; the client computes it from the lines.
+_G.GameTooltip.__height = 220
+function _G.GameTooltip:GetHeight() return self.__height end
 function _G.GameTooltip:ClearLines()
     self.lines = {}
     self.lineColors = {}

@@ -119,6 +119,26 @@ threshold = clamp(本机平时延迟 + 60ms, 120ms, 250ms)
 
 > 实测踩坑：语言表的值顺序是 `{ zhCN, zhTW, enUS }`（见文件头注释）。第一次加 `ADDON_TITLE` 时
 > 按 `{ enUS, zhCN, zhTW }` 写了，中文客户端会显示成英文名——新加的「插件显示名」用例当场抓到。
+
+### 状态条悬停提示的摆位（必须让开鼠标）
+
+光标就停在读数条上，所以提示框**不能贴着它**；而读数条默认在屏幕上方，往上挂会被屏幕顶端切掉
+（2026-09-28 真机：第一行「施法容限」和状态行都跑到屏幕外，只剩后半段可见）。规则：
+
+| 情况 | 摆位 |
+|---|---|
+| 读数条下方放得下（`GetBottom() - 8 - 提示框高度 ≥ 0`） | `TOPLEFT ← BOTTOMLEFT`，向下 8px 间隙 |
+| 下方放不下（读数条被拖到屏幕底部） | 翻到上方 `BOTTOMLEFT ← TOPLEFT`，同样 8px 间隙 |
+| 水平方向 | 交给客户端的 `SetClampedToScreen(true)` 夹紧，不会跑出屏幕 |
+| 玩家按住拖动 | `OnMouseDown` 立刻 `GameTooltip:Hide()`，别挡着操作 |
+
+实现：`Options.AnchorStatusBarTooltip`（先加行 → 按 `GameTooltip:GetHeight()` 决定上下 → 再 `Show`），
+`SetOwner(owner, "ANCHOR_NONE")` 表示由插件自己定位。用例：`spec_options`
+`状态条提示框必须让开鼠标…`、`拖动状态条时提示框必须立刻消失…`。
+
+> 真机验证技巧：合成鼠标触发不了 WoW 的悬停，但可以用**一条短命令**直接调用处理器把提示框显示出来——
+> `/run local b=AutoSpellQueueStatusBar b:GetScript("OnEnter")(b)`（62 字符，安全）→ 截图即可看到真实摆位。
+
 ### 只有一套配色：`Options.SignalColor()`
 
 插件的**每一个**着色表面都从同一个函数取色，不允许任何地方自带颜色（原来的品牌绿已全部移除）：

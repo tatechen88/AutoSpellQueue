@@ -737,6 +737,55 @@ T.test("统一配色：没有任何表面再用旧的品牌绿（提示标题也
         T.truthy(pr > 0.8 and pg < 0.6, "发布的调色板在偏高时必须是红")
     end)
 end)
+T.test("状态条提示框必须让开鼠标：下方留间隙；下方放不下才翻到上方（都在屏幕内）", function()
+    Boot()
+    local bar = StatusBar()
+    bar:Show()
+    local tip = _G.GameTooltip
+    tip.__height = 220
+
+    local function ShowAt(topOffset)
+        -- 把读数条放到指定高度（UIParent TOPLEFT 为原点，向上为负）
+        bar:ClearAllPoints()
+        bar:SetPoint("TOPLEFT", _G.UIParent, "TOPLEFT", 900, topOffset)
+        tip:ClearLines()
+        bar.__scripts.OnEnter(bar)
+        local point, relTo, relPoint, x, y = tip:GetPoint()
+        return point, relTo, relPoint, x, y
+    end
+
+    -- 场景 1：读数条在屏幕上方（默认位置）→ 提示框挂下方，留 8px 间隙
+    local point, _, relPoint, x, y = ShowAt(-200)
+    T.eq(tip.anchor, "ANCHOR_NONE", "必须由插件自己定位（不让客户端贴在读数条上）")
+    T.eq(point, "TOPLEFT", "应挂在读数条下方")
+    T.eq(relPoint, "BOTTOMLEFT", "相对点应是读数条的左下角")
+    T.eq(x, 0, "水平不偏移")
+    T.truthy(y < 0, "必须有向下的间隙（实得 " .. tostring(y) .. "）")
+    T.truthy(tip.clamped, "必须保持夹紧在屏幕内")
+
+    -- 间隙要够：提示框顶边不能压到读数条（读数条高 24，y 绝对值要 > 0）
+    T.truthy(math.abs(y) >= 4, "间隙太小，光标仍会被挡（实得 " .. tostring(y) .. "）")
+
+    -- 场景 2：读数条拖到屏幕底部（下方放不下 220px 的提示框）→ 翻到上方
+    bar:ClearAllPoints()
+    bar:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", 900, 10)
+    tip:ClearLines()
+    bar.__scripts.OnEnter(bar)
+    local point2, _, relPoint2, _, y2 = tip:GetPoint()
+    T.eq(point2, "BOTTOMLEFT", "下方放不下时应翻到上方")
+    T.eq(relPoint2, "TOPLEFT", "相对点是读数条的左上角")
+    T.truthy(y2 > 0, "上翻时同样要有间隙（实得 " .. tostring(y2) .. "）")
+end)
+
+T.test("拖动状态条时提示框必须立刻消失（别挡着玩家操作）", function()
+    Boot()
+    local bar = StatusBar()
+    bar:Show()
+    _G.GameTooltip:Show()
+    T.truthy(_G.GameTooltip:IsShown(), "前置：提示框已显示")
+    bar.__scripts.OnMouseDown(bar)
+    T.falsy(_G.GameTooltip:IsShown(), "按下拖动时提示框应立刻隐藏")
+end)
 T.test("偏高时悬停提示必须说明「为什么是红的」", function()
     Boot()
     local bar = StatusBar()

@@ -487,11 +487,34 @@ local function SaveStatusBarPosition()
         { noRefresh = true })
 end
 
+--- 把提示框放到不挡鼠标、也不被屏幕切掉的位置。
+--  两个约束（2026-09-28 真机截图）：
+--    1. 光标就停在读数条上，提示框若贴着它（或压在它上面），玩家的鼠标会被挡住；
+--    2. 读数条默认在屏幕上方，往上挂会被屏幕顶端切掉——实测第一行「施法容限」和状态行
+--       都跑到屏幕外，只剩后半段可见。
+--  所以：优先挂在下方并留 8px 间隙；下方放不下（读数条拖到屏幕底部）才翻到上方，
+--  两种情况都带间隙，且 SetClampedToScreen 保证不会跑出屏幕。
+local TOOLTIP_GAP = 8
+
+local function AnchorStatusBarTooltip(owner)
+    GameTooltip:ClearAllPoints()
+    GameTooltip:SetClampedToScreen(true)
+    local height = GameTooltip.GetHeight and (GameTooltip:GetHeight() or 0) or 0
+    local ownerBottom = owner.GetBottom and (owner:GetBottom() or 0) or 0
+    if ownerBottom - TOOLTIP_GAP - height >= 0 then
+        GameTooltip:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -TOOLTIP_GAP)
+    else
+        GameTooltip:SetPoint("BOTTOMLEFT", owner, "TOPLEFT", 0, TOOLTIP_GAP)
+    end
+end
+
 local function ShowStatusBarTooltip(owner)
     if not GameTooltip then return end
     local status = Core.GetStatus()
     local text, _, state = StatusBarVisual(status)
-    GameTooltip:SetOwner(owner, "ANCHOR_TOP")
+    -- ANCHOR_NONE: we place it ourselves (see AnchorStatusBarTooltip) instead of
+    -- letting the client put it flush against the readout.
+    GameTooltip:SetOwner(owner, "ANCHOR_NONE")
     GameTooltip:ClearLines()
     local accentR, accentG, accentB = SignalColor()
     GameTooltip:AddLine(L("ADDON_TITLE"), accentR, accentG, accentB)
@@ -522,6 +545,9 @@ local function ShowStatusBarTooltip(owner)
     end
     GameTooltip:AddLine(SampledText(status), 0.80, 0.80, 0.80, true)
     GameTooltip:AddLine(L("TOOLTIP_STATUS_BAR"), 0.80, 0.80, 0.80, true)
+    -- Place it after the lines exist: the choice between below and above needs
+    -- the tooltip's real height.
+    AnchorStatusBarTooltip(owner)
     GameTooltip:Show()
 end
 
@@ -556,6 +582,8 @@ local function CreateStatusBar()
 
     bar:SetScript("OnMouseDown", function(self)
         self._dragging = false
+        -- Get the tooltip out of the way the moment the player grabs the readout.
+        if GameTooltip then GameTooltip:Hide() end
     end)
     bar:SetScript("OnDragStart", function(self)
         self._dragging = true
