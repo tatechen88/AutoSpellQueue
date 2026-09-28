@@ -1,65 +1,105 @@
 # Changelog
 
+> **从 v2.0.0 起，每个版本都提供中文与 English 两版说明。**
+> 中文部分先给「玩家能感觉到的变化」，再列工程细节；English 部分结构相同、独立成篇。
+> Since v2.0.0 every entry ships in both 中文 and English: player-visible changes first, engineering details after.
+>
 > 版本号与 `AutoSpellQueue.toc` 的 `## Version` 必须一致（`tools/verify.ps1` 会检查）。日期为 ISO 格式。
+
+---
 
 ## v2.0.0 — 2026-09-28
 
-> 本版本尚未对外发布，日期为代码冻结日期；发布规划见 [`docs/CURSEFORGE.md`](docs/CURSEFORGE.md)。
+> 尚未对外发布，日期为代码冻结日期；发布规划见 [`docs/CURSEFORGE.md`](docs/CURSEFORGE.md)。
+> Player-facing pitch: [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md).
 
-### 更名
+### 中文
 
-- 插件更名为 **AutoSpellQueue**（原 `Tate_ASQ` / Tate's AutoSpellQueue）。插件文件夹名、`.toc` 文件名与全部 `.lua` 文件前缀同步更改。
-- 加载顺序重排为 `Locale → Formula → CVar → Core → Options`：计算、CVar 访问、运行时状态机拆成独立模块，模块间通过 `.toc` 传入的私有命名空间 `ns` 通信（不使用全局，唯一例外是 `_G.AutoSpellQueue` 供 `/dump` 排查）。
-- Interface 列表更新为 `120000, 120001, 120005, 120007, 120100, 120105`（覆盖当前 12.x 正式服客户端）；保留 `## Category: Combat`。
+#### 玩家能感觉到的变化
 
-### 按代码审查结论修复
+- **换名字了**：`Tate_ASQ` → **AutoSpellQueue**。插件文件夹名也变了，升级时请看下面的「升级须知」。
+- **默认装上就能用，不用配置**：设置页从一整页选项精简成「总开关 + 一张状态卡 +（折叠起来的）高级设置」。状态卡直接告诉你：当前值、目标值、延迟、场景，以及**这个数字是怎么算出来的**。
+- **它会真的跟着你的网速走**：以前只在换地图/切专精时算一次，延迟变了也照旧；现在**每 15 秒重算一次**（客户端自己的延迟读数约 30 秒刷新，所以最坏情况滞后几十秒）。
+- **界面不再说谎**：写不进去就明确显示「写入失败」和原因，而不是显示一个其实没生效的数字。状态条在失败/不可用/关闭时只显示状态名，不会拿旧数字糊弄你。
+- **战斗中关闭插件会等脱战**：战斗中一律不写 CVar，关闭也会显示「等待脱战」，脱战后才把你的原值还回去。
+- **中英繁三语完整文案**：英文客户端不再看到内部键名（这是上一版的问题）。
 
-1. **写入「pcall 假成功」** — 新增 `AutoSpellQueue_CVar.lua`，把 CVar 写入收敛到唯一一处，并且只有在 **API 没有拒绝** 且 **读回值与目标一致** 时才判定成功。API 返回 `nil`（未证实）必须读回验证；读回不一致报 `verify-failed`；另外拒绝非法值、只读 CVar、战斗中写入与缺少 API 的情况。旧实现把「`pcall` 没抛错」当成「写成功」，界面会显示一个并未生效的值。
-2. **跨重载所有权丢失** — 所有权（`baseline` / `lastApplied` / `startedAt` / `schema`）持久化进存档，并在加载时校验；`PLAYER_LOGOUT` 归还玩家原值；若归还失败，存档里的所有权记录让下次登录仍能归还。
-3. **战斗中的 pending 冲突** — 不再缓存待重放的 `pendingTarget`。战斗中只把状态标为 `pending` 且不写入；`PLAYER_REGEN_ENABLED` 重新读取**实时状态**再决策，避免把过期的战斗前快照硬套上去。这条规则对「应用」与「归还」一视同仁：战斗中禁用插件时，归还玩家原值同样推迟到脱战（旧实现会在战斗中直接写）。
-4. **延迟变化不重算** — 启用期间每 15 秒重新评估一次（`Core.REFRESH_SECONDS`），登录后再按 2/5/10/20/40 秒补算直到客户端报出非零延迟；`CVAR_UPDATE` 触发 0.5 秒防抖重算。旧实现只在换区域/切专精时计算，网络延迟变了也不会更新。
-5. **配置迁移死分支与无校验** — 迁移表 `MIGRATIONS` 改为真正按 `schemaVersion` 顺序执行；新增 `Core.Sanitize()` 对全部设置键做类型/范围/枚举校验，越界值 clamp、非法值回退默认并计数（`stats.repairs`），`minWindow > maxWindow`、坏掉的 `ownership`、越界坐标都会被修正；`Core.SetConfig` 只接受白名单键。
-6. **未来 schema 不降级** — 存档 `schemaVersion` 高于当前版本时，原样保留全部字段并标记 `schemaFuture`，绝不把新版本写的数据改写成旧结构。
-7. **UI 复杂与每秒全量刷新** — 设置界面重写为「总开关 + 状态卡 + 高级折叠」，状态真实反映 `applied` / `pending`（战斗）/ `error` / `unavailable` / `disabled`，写入失败直接显示原因；刷新只在面板可见时进行。旧实现每秒遍历全部控件（包括隐藏的）。
-8. **缺测试与打包门禁** — 新增本地门禁：`tools/check-syntax.mjs`（luaparse，Lua 5.1 解析仓库内全部 `.lua`）、`tools/run-tests.mjs` + `tests/`（fengari，Lua 5.3 跑公式、CVar 写入校验与核心状态机的单元测试）、`pwsh tools/verify.ps1`（语法 → 单测 → 结构/版本一致性，可选 `-Package`）。打包脚本保证 zip 根目录恰好是 `AutoSpellQueue/` 且只含 6 个运行期文件。
+#### 修复（来自代码审查）
 
-### 破坏性变更
+1. **写入不再「假成功」** — 只有「API 没拒绝」**且**「读回的值与目标一致」才算写入成功。旧版把「没抛异常」当成成功，界面会显示一个并未生效的值。
+2. **所有权跨重载不再丢失** — 插件记住接管前你自己的值，并把它存进存档；`PLAYER_LOGOUT` 归还；万一归还失败，下次登录仍能归还。
+3. **战斗中的待办不再冲突** — 不再缓存「脱战后要写的旧目标」。脱战瞬间重新读实时状态再决策，避免把战斗前的旧值套上去。这条对「应用」和「归还」一视同仁。
+4. **延迟变化会重算** — 见上，启用期间每 15 秒一次；登录后 2/5/10/20/40 秒补算，直到客户端能报出非零延迟。
+5. **配置会校验** — 存档里的越界值、错类型、上下限颠倒、坏掉的所有权记录都会修正回默认并计数；未来版本写的存档**不会被降级改写**。
+6. **UI 精简与诚实化** — 见上；另外面板不可见时不再刷新，控件树只构建一次。
+7. **新增本地验证门禁与可复现打包** — 语法检查、128 个用例 / 1206 条断言的单元测试、结构与版本一致性检查、打包校验，一条命令跑完。
 
-- **SavedVariables 更名**：`Tate_ASQDB` → `AutoSpellQueueDB`。
-- **旧设置导入（有前提条件，务必看清）**：客户端**只加载与插件文件夹同名的存档文件**，旧设置写在 `WTF\Account\<账号>\SavedVariables\Tate_ASQ.lua` 里。删掉旧插件后没有任何东西会去读它，因此导入**不会自动发生**——需要把该文件复制/改名为同目录下的 `AutoSpellQueue.lua`（`.toc` 已声明 `Tate_ASQDB`，改名后首次登录即可导入配置项：启用状态、基础值模式、余量、上下限、迟滞、状态条字体/位置等），随后清空旧变量。所有权记录**不**继承（避免误写玩家当前值），baseline 会在下次接管时重新记录。不复制该文件也能正常使用，只是回到默认设置。
-- **升级必须先删除旧的 `Tate_ASQ` 文件夹**：新旧是两个独立插件，会争抢同一个 CVar，且两个 `.toc` 都声明 `Tate_ASQDB`。
+#### 升级须知（破坏性变更）
 
-### 其他
+- **必须先删除旧的 `AddOns\Tate_ASQ` 文件夹**：新旧是两个独立插件，会争抢同一个 CVar。
+- **存档变量改名**：`Tate_ASQDB` → `AutoSpellQueueDB`。
+- **想保留旧设置，需要手动做一步**：客户端**只加载与插件文件夹同名的存档文件**，旧设置写在
+  `WTF\Account\<账号>\SavedVariables\Tate_ASQ.lua` 里，删掉旧插件后没有任何东西会读它。
+  把该文件复制/改名为同目录下的 `AutoSpellQueue.lua` 即可自动导入（不复制也能用，只是回到默认设置）。
 
-- 错误不再静默：写入/读取失败一定会在聊天框提示（同一条错误 120 秒内不重复刷屏），并在状态里保留原因与时间。
-- 玩家或其他插件改过值之后，本插件只释放所有权、**不覆盖**，且不重设 baseline——「归还玩家接管前的值」这个承诺保持不变。
-- 迟滞（默认 10 ms）只在插件已经接管（存在 `lastApplied`）之后生效，避免接管前因抖动反复写入。
-- 状态值统一为 `idle` / `disabled` / `applied` / `pending` / `error` / `unavailable`，界面与诊断输出共用。
-- 「重置全部设置」现在也会清掉悬浮状态条位置（默认值表里 `statusBarPos` 是 `nil`，遍历默认值时会被跳过，旧实现因此漏掉这一项）。
+#### 其他
+
+- 错误不再静默：写入/读取失败一定会在聊天框提示（同一条错误 120 秒内不重复刷屏）。
+- 「重置全部设置」现在也会清掉悬浮状态条的位置。
 - 新增斜杠命令：`/asq`、`/asq status`、`/asq reset`、`/asq unlock`。
-- 界面与聊天文案提供 **enUS / zhCN / zhTW** 三套完整翻译（同一张源表生成，键集必然一致；其他语言客户端回退 enUS）。英文是真实文案而不是「回退成内部键名」——旧做法会让英文客户端显示 `STATE_APPLIED` 这类键名。设置面板标题统一为 `AutoSpellQueue`。
-- 新增文档：`docs/ARCHITECTURE.md`（接口冻结契约）、`docs/CURSEFORGE.md`（发布规划）；README 中英双语重写，HANDOFF 更新为当前状态。
-- 新增 `LICENSE`（MIT）与 `.pkgmeta`（BigWigs packager 配置）；文件换行统一为 LF（`.gitattributes`）。
+- 新增 `docs/ARCHITECTURE.md`（接口契约）、`docs/CURSEFORGE.md`（发布规划）、`docs/DESCRIPTION.md`（本说明的玩家版）、`LICENSE`（MIT）、`.pkgmeta`。
+
+### English
+
+#### What you will actually notice
+
+- **New name**: `Tate_ASQ` → **AutoSpellQueue**. The addon folder changed too — see "Upgrading" below.
+- **Works out of the box**: the options page went from a wall of settings to *master switch + status card + (collapsed) advanced*. The card shows current value, target, latency, context, and **how the number was derived**.
+- **It actually follows your connection now**: it used to recalculate only on zone/spec changes, so a latency shift never reached the value. It now **re-evaluates every 15 seconds** (the client's own latency reading refreshes roughly every 30 s, so worst case you're a few tens of seconds behind).
+- **The UI stopped lying**: a failed write now shows "write failed" plus the reason instead of a believable number that was never applied. In failed/unavailable/disabled states the floating bar shows the state name only — never a stale number.
+- **Disabling in combat waits**: it never writes a CVar during combat, and disabling mid-fight shows "waiting" until combat ends before restoring your value.
+- **Full enUS / zhCN / zhTW copy**: English clients no longer see internal key names (a bug in the previous build).
+
+#### Fixes (from the code review)
+
+1. **No more "fake success" writes** — a write only counts when the API did not reject it **and** reading the value back matches the target. The old build treated "no exception raised" as success and displayed a value that was never applied.
+2. **Ownership survives reloads** — the value you had before the addon took over is recorded and persisted; `PLAYER_LOGOUT` gives it back, and if that fails the record still lets the next session restore it.
+3. **No more combat-pending conflicts** — there is no cached "target to replay after combat". The moment combat ends it re-reads live state and decides again, so a pre-combat value can't be forced onto the client. Same rule for applying and for restoring.
+4. **Latency changes are re-evaluated** — every 15 s while enabled, plus a 2/5/10/20/40 s warm-up after login until the client reports a non-zero latency.
+5. **Settings are validated** — out-of-range values, wrong types, inverted min/max and broken ownership records are repaired and counted; a save written by a **newer** schema is never downgraded.
+6. **Leaner, honest UI** — see above; the panel no longer refreshes while hidden, and the widget tree is built once.
+7. **New local verification gate + reproducible packaging** — syntax check, 128 unit cases / 1206 assertions, structure and version consistency, package validation — one command.
+
+#### Upgrading (breaking changes)
+
+- **You must delete the old `AddOns\Tate_ASQ` folder first**: old and new are separate addons that fight over the same CVar.
+- **SavedVariables renamed**: `Tate_ASQDB` → `AutoSpellQueueDB`.
+- **Keeping your old settings takes one manual step**: the client only loads a SavedVariables file named after the addon folder, and the old settings live in `Tate_ASQ.lua`. Copy
+  `WTF\Account\<your account>\SavedVariables\Tate_ASQ.lua` → `AutoSpellQueue.lua` in the same folder. Without that copy the addon simply starts from the defaults.
+
+#### Other
+
+- Errors are no longer silent: write/read failures always print once in chat (the same reason is throttled to once per 120 s).
+- "Reset all settings" now also clears the floating bar's saved position.
+- New slash commands: `/asq`, `/asq status`, `/asq reset`, `/asq unlock`.
+- New docs: `docs/ARCHITECTURE.md` (interface contract), `docs/CURSEFORGE.md` (release plan), `docs/DESCRIPTION.md` (player-facing copy), `LICENSE` (MIT), `.pkgmeta`.
+
+---
 
 ## v1.0.2
 
-- 設置頁開關改為滑塊式開關 UI，頁面更精簡。
-- 新增「顯示狀態條」開關。
-- README 新增繁體中文與英文說明。
-- 下載連結更新至 v1.0.2。
+**中文** — 设置页开关改为滑块式 UI，页面更精简；新增「显示状态条」开关；README 新增繁中与英文说明；下载链接更新到 v1.0.2。
+
+**English** — Toggle switches in the options page; new "Show status bar" option; README gained Traditional Chinese and English sections; download link bumped to v1.0.2.
 
 ## v1.0.1
 
-- 修复状态条位置记忆：保存完整锚点信息，登入后正确恢复位置。
-- 状态条位置记忆同时保持屏幕内约束，不会超出画面。
-- 精简界面词条与无用函数，减少常驻内存。
-- README 安装说明加入下载链接。
+**中文** — 修复状态条位置记忆（保存完整锚点，登录后正确恢复）；位置受屏幕边界约束；精简界面词条与无用函数；README 加入下载链接。
+
+**English** — Fixed status bar position memory (full anchor saved and restored on login); position clamped to the screen; trimmed strings and dead functions; download link added to the README.
 
 ## v1.0.0
 
-- 首个发布版本。
-- 依职业/专精基础值自动调整 SpellQueueWindow。
-- 城市 / 副本 / 野外不同计算方式。
-- World 延迟优先，Home 回退。
-- 悬浮状态条显示当前值，可拖动、左键打开设置。
-- 中英文自动切换（zhCN / zhTW / enUS）。
+**中文** — 首个发布版本：依职业/专精基础值自动调整 `SpellQueueWindow`；城市 / 副本 / 野外不同算法；World 延迟优先、Home 回退；悬浮状态条可拖动、左键开设置；中英自动切换。
+
+**English** — First release: automatic `SpellQueueWindow` tuning from a per-spec base value; different rules for cities / instances / open world; World latency first with Home fallback; draggable floating bar that opens the settings on left-click; zhCN/zhTW/enUS support.

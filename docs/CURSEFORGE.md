@@ -98,8 +98,8 @@ CurseForge 项目页需要的素材（数量为最低要求；**具体尺寸/数
 |---|---|---|---|---|---|
 | 1 | Logo / 项目头像 | 512×512 PNG，正方形（待确认是否为强制尺寸） | 1 | 待制作 | 建议用插件图标 `Interface\Icons\Spell_Holy_BorrowedTime` 做底 + 插件名文字；纯色深底 + 绿色（`#0cd29f`，与聊天前缀/标题色一致）点缀 |
 | 2 | 截图 | ≥ 1280×720（建议 1600×900 或 1920×1080，PNG） | ≥ 3 | 待制作 | 建议内容：① 设置面板主区域（状态卡：当前值/目标值/延迟/场景）② 高级区展开 ③ 悬浮状态条 + tooltip ④ 战斗中 `pending` 状态 ⑤ `/asq status` 聊天输出。截图里不要出现他人角色名（隐私） |
-| 3 | 简介 Summary | 单段短文（平台有字数上限，待确认） | en + zhCN 各 1 | 草稿见 §2.1 | 第一句必须说清「只改本地 CVar、不自动施法」 |
-| 4 | 详细描述 Description | 支持 Markdown/HTML（待确认编辑器能力） | en + zhCN 各 1 | 草稿见 §2.2 | 必须包含：功能、**不做什么**、安装、升级注意、命令、已知限制、许可证、反馈渠道 |
+| 3 | 简介 Summary | 单段短文（平台有字数上限，待确认） | en + zhCN 各 1 | 见 [`docs/DESCRIPTION.md`](DESCRIPTION.md) 末节「商店页短简介」 | 第一句必须说清「只改本地 CVar、不自动施法」 |
+| 4 | 详细描述 Description | 支持 Markdown/HTML（待确认编辑器能力） | en + zhCN 各 1 | 见 [`docs/DESCRIPTION.md`](DESCRIPTION.md)（中英各自独立成篇） | 必须包含：功能、**不做什么**、安装、升级注意、命令、已知限制、许可证、反馈渠道（检查清单见 §2.2） |
 | 5 | 分类 Category | CurseForge WoW 类目列表 | 1 | 建议 **Combat**（与 `.toc` 的 `## Category: Combat` 一致） | 若平台另有更贴切的类目可改，但 `.toc` 与页面**必须一致**；「Utility」若不作为独立类目存在，用标签表达 |
 | 6 | 标签 Tags | 平台标签/自定义关键词 | 3–6 | 建议：`spell queue`、`latency`、`cvar`、`quality of life`，中文再加 `施法队列` | 不要用 `automation` / `bot` / `macro` 这类会被误判的词 |
 | 7 | 支持的游戏版本 | CurseForge 的 game version 勾选 | — | **Retail 12.1.5**（与 Interface 最后一项 `120105` 对应），并按 `## Interface` 列表勾选 12.0.0–12.1.5 中平台列出的版本 | 每次补丁后更新（见 §7.4） |
@@ -110,21 +110,20 @@ CurseForge 项目页需要的素材（数量为最低要求；**具体尺寸/数
 
 ### 2.1 简介草稿（可直接粘贴）
 
-**zhCN**
+> **唯一文案源已迁移到 [`docs/DESCRIPTION.md`](DESCRIPTION.md)** 的「商店页短简介」一节（zhCN + en 各一段，可直接粘贴）。
+> 本文件不再重复正文，避免两处文案漂移。
 
-> 自动把施法队列窗口（`SpellQueueWindow`）调整到适合你专精与网络延迟的值，并在插件停用时归还你自己原来的值。只修改本地客户端设置，不自动施法、不联网。
+### 2.2 详细描述（唯一文案源：`docs/DESCRIPTION.md`）
 
-**en**
+详细描述的完整中英两版在 **[`docs/DESCRIPTION.md`](DESCRIPTION.md)**：
+中文版与 English 版各自独立成篇（不是互译），结尾另附「商店页短简介」。
+上传商店页时从那里取文，**不要在本文件里另写一份**。
 
-> Keeps your spell queue window (`SpellQueueWindow`) tuned to your spec and latency, and puts your own value back when disabled. It only changes a local client setting — no automation, no network access.
-
-### 2.2 详细描述草稿（en / zhCN，结构一致）
-
-建议结构（顺序照抄，内容按 §2.1 语气）：
+商店页必须覆盖的检查项（提交前逐条对照 `docs/DESCRIPTION.md` 是否都写到）：
 
 ```
 # AutoSpellQueue
-一句话介绍
+一句话介绍（第一句必须说清「只改本地 CVar、不自动施法」）
 
 ## What it does / 它做什么
 - 只改一个 CVar：SpellQueueWindow（0–400 ms，客户端默认 400）
@@ -140,10 +139,12 @@ CurseForge 项目页需要的素材（数量为最低要求；**具体尺寸/数
 解压到 Interface\AddOns\AutoSpellQueue\（zip 根目录已经是 AutoSpellQueue/）
 
 ## Upgrading from Tate_ASQ / 从旧版升级
-先删除旧的 Tate_ASQ 文件夹；旧设置会自动导入一次
+先删除旧的 Tate_ASQ 文件夹。想保留旧设置需把
+SavedVariables\Tate_ASQ.lua 复制为 SavedVariables\AutoSpellQueue.lua
+（客户端只加载与插件文件夹同名的存档文件；不复制则回到默认设置）
 
 ## Ownership & restore / 所有权与恢复
-只在自己写入的值仍生效时才归还；外部改值只放弃所有权不覆盖；登出归还
+只在自己写入的值仍生效时才归还；外部改值只放弃所有权不覆盖；登出归还；写入读回校验
 
 ## Commands / 命令
 /asq、/asq status、/asq reset、/asq unlock
@@ -151,11 +152,11 @@ CurseForge 项目页需要的素材（数量为最低要求；**具体尺寸/数
 ## Known limitations / 已知限制
 战斗中不写入（脱战后生效）；延迟读数由客户端约每 30 秒刷新一次，因此数值最多滞后几十秒
 
-## License / Feedback
-MIT © 2026 Tate Chen；反馈走 CurseForge 评论或 GitHub Issues
-
 ## Languages / 语言
 enUS / zhCN / zhTW（其他语言客户端回退英文）
+
+## License / Feedback
+MIT © 2026 Tate Chen；反馈走 CurseForge 评论或 GitHub Issues
 ```
 
 > 措辞红线：不要出现 `automation` / `bot` / `cheat` / `script`（指代自动化的语境）等词，避免与违规插件混淆；强调「只改你自己也能改的本地设置」。

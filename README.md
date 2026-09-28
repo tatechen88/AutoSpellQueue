@@ -5,6 +5,10 @@
 魔兽世界正式服（12.x）插件 · 版本 **2.0.0** · 作者 **Tate Chen** · 许可证 **MIT** · 语言 **enUS / zhCN / zhTW**
 
 > 原名 **Tate_ASQ / Tate's AutoSpellQueue**。v2.0.0 起更名为 **AutoSpellQueue**，插件文件夹名也随之改变（升级说明见下）。
+>
+> 📖 **玩家视角的完整说明（中文 + English）：[`docs/DESCRIPTION.md`](docs/DESCRIPTION.md)** ——
+> 它是商店页与发布说明的唯一文案源，本 README 保留安装/开发向的内容。
+> Player-facing guide (中/EN) lives in [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md).
 
 ---
 
