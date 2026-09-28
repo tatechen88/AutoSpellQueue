@@ -88,6 +88,9 @@ local PANEL_WIDTH = 640
 local PANEL_PAD = 16
 local POLL_INTERVAL = 0.5
 
+--- A touch dimmer than the text so the number still reads first.
+local STATUS_BAR_BORDER_ALPHA = 0.8
+
 -------------------------------------------------------------------------------
 --  Small helpers
 -------------------------------------------------------------------------------
@@ -250,7 +253,13 @@ local function SetColor(tex, r, g, b, a)
     tex:SetColorTexture(r or 0, g or 0, b or 0, a or 1)
 end
 
+--- Draws a 1px border and keeps the four textures on the frame (`frame._border`)
+--- so the caller can recolour them later - the status bar's border follows its
+--- text colour, which is how the numbers change colour with latency.
 local function AddBorder(frame, r, g, b, a)
+    local border = {}
+    frame._border = border
+
     local top = frame:CreateTexture(nil, "BORDER")
     top:SetPoint("TOPLEFT")
     top:SetPoint("TOPRIGHT")
@@ -274,6 +283,18 @@ local function AddBorder(frame, r, g, b, a)
     right:SetPoint("BOTTOMRIGHT")
     right:SetWidth(1)
     SetColor(right, r, g, b, a)
+
+    border[1], border[2], border[3], border[4] = top, bottom, left, right
+    return border
+end
+
+--- Repaints a border created by AddBorder.
+local function RecolorBorder(frame, r, g, b, a)
+    local border = frame and frame._border
+    if not border then return end
+    for index = 1, #border do
+        SetColor(border[index], r, g, b, a)
+    end
 end
 
 local function NewText(parent, fontObject)
@@ -420,6 +441,9 @@ local function UpdateStatusBar()
     local label = statusBar._text
     label:SetText(text)
     label:SetTextColor(color[1], color[2], color[3])
+    -- The border follows the same colour as the text, so the whole readout is
+    -- white while the connection is normal and red when it is not.
+    RecolorBorder(statusBar, color[1], color[2], color[3], STATUS_BAR_BORDER_ALPHA)
     statusBar:SetSize(math.max(64, (label:GetStringWidth() or 40) + 26), 22)
 end
 

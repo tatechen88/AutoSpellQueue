@@ -658,6 +658,34 @@ T.test("数字颜色随延迟品质变化：正常=白，明显偏高=红（状�
         latencyQuality = "good" })
     T.truthy(IsRed(r, g, b), "失败状态必须红（与延迟品质无关）")
 
+    -- 边框必须跟数字同色（玩家要求：边框也要跟着变）
+    local function BorderRGB()
+        local colors = {}
+        for _, texture in ipairs(bar._border or {}) do
+            if texture.color then colors[#colors + 1] = texture.color end
+        end
+        return colors
+    end
+    T.eq(#BorderRGB(), 4, "状态条边框应有四条边纹理")
+
+    local function BorderMatches(r, g, b)
+        for _, c in ipairs(BorderRGB()) do
+            if math.abs(c[1] - r) > 0.05 or math.abs(c[2] - g) > 0.05
+                or math.abs(c[3] - b) > 0.05 then
+                return false
+            end
+        end
+        return true
+    end
+
+    local tr, tg, tb = BarColorFor({ state = "applied", live = 245, latencyQuality = "good" })
+    T.truthy(BorderMatches(tr, tg, tb), "边框必须与数字同色（正常→白）")
+
+    tr, tg, tb = BarColorFor({ state = "applied", live = 245, latencyQuality = "high" })
+    T.truthy(BorderMatches(tr, tg, tb), "边框必须与数字同色（偏高→红）")
+
+    tr, tg, tb = BarColorFor({ state = "disabled", live = 150, enabled = false })
+    T.truthy(BorderMatches(tr, tg, tb), "关闭状态边框也要跟着状态色（灰）")
     -- 面板状态行用的是同一套规则
     WithStatus(FakeStatus({ state = "applied", live = 245, latencyQuality = "high" }), function()
         Options.Refresh()
