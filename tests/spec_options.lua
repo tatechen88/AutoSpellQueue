@@ -699,6 +699,44 @@ T.test("数字颜色随延迟品质变化：正常=白，明显偏高=红（状�
     end)
 end)
 
+T.test("统一配色：没有任何表面再用旧的品牌绿（提示标题也走信号色）", function()
+    Boot()
+    -- 旧品牌绿 #0cd29f ≈ (0.047, 0.824, 0.616)
+    local function IsOldBrandGreen(r, g, b)
+        return math.abs(r - 12 / 255) < 0.03 and math.abs(g - 210 / 255) < 0.03
+            and math.abs(b - 157 / 255) < 0.03
+    end
+    local function TitleColorAfterRefresh(overrides)
+        local r, g, b
+        WithStatus(FakeStatus(overrides), function()
+            Options.Refresh()
+            local bar = StatusBar()
+            bar:Show()
+            if _G.GameTooltip then _G.GameTooltip:ClearLines() end
+            bar.__scripts.OnEnter(bar)
+            local colors = _G.GameTooltip.lineColors or {}
+            local first = colors[1] or { 1, 1, 1 }
+            r, g, b = first[1], first[2], first[3]
+        end)
+        return r, g, b
+    end
+
+    local r, g, b = TitleColorAfterRefresh({ state = "applied", live = 245, latencyQuality = "good" })
+    T.falsy(IsOldBrandGreen(r, g, b), "正常状态不该再是品牌绿（实得 " .. tostring(r) .. "," .. tostring(g) .. "," .. tostring(b) .. "）")
+    T.truthy(r > 0.9 and g > 0.9 and b > 0.9, "正常状态提示标题应为白色")
+
+    r, g, b = TitleColorAfterRefresh({ state = "applied", live = 245, latencyQuality = "high" })
+    T.truthy(r > 0.8 and g < 0.6 and b < 0.6, "偏高时提示标题应为红色（实得 " .. tostring(r) .. "," .. tostring(g) .. "," .. tostring(b) .. "）")
+    T.falsy(IsOldBrandGreen(r, g, b), "偏高时也不该出现品牌绿")
+
+    -- 聊天前缀用的也是同一个调色板
+    T.truthy(type(ns.AccentColor) == "function", "调色板必须由 Options 发布给 Core 使用")
+    WithStatus(FakeStatus({ state = "applied", live = 245, latencyQuality = "high" }), function()
+        Options.Refresh()
+        local pr, pg, pb = ns.AccentColor()
+        T.truthy(pr > 0.8 and pg < 0.6, "发布的调色板在偏高时必须是红")
+    end)
+end)
 T.test("偏高时悬停提示必须说明「为什么是红的」", function()
     Boot()
     local bar = StatusBar()

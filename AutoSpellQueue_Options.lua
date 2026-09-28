@@ -55,8 +55,6 @@ end
 -------------------------------------------------------------------------------
 --  Visuals
 -------------------------------------------------------------------------------
-local ACCENT = { 12 / 255, 210 / 255, 157 / 255 }
-
 local STATE_COLOR = {
     applied     = { 0.05, 0.83, 0.60 },
     pending     = { 1.00, 0.72, 0.20 },
@@ -154,6 +152,20 @@ end
 local function StateLabel(state)
     return L("STATE_" .. string.upper(state))
 end
+
+--- THE palette of this addon: one function, every surface.
+--  White while the connection is what this machine normally sees; red when it is
+--  clearly worse; the state colours while something is wrong or deferred. Used by
+--  the floating bar (text + border), the tooltip title, the fallback window and
+--  the chat prefix, so no surface can drift out of step.
+--  Returns three channels - NOT the colour table - because every caller spreads
+--  it straight into SetTextColor/AddLine/SetColorTexture.
+local function SignalColor()
+    local status = Core.GetStatus()
+    local color = ValueColor(ResolveState(status), status)
+    return color[1], color[2], color[3]
+end
+ns.AccentColor = SignalColor
 
 local function ReasonText(status)
     local key = status.stateReasonKey or status.lastError
@@ -336,7 +348,8 @@ local function NewButton(parent, width, height, text)
     button._bg = bg
     button._text = label
     button:SetScript("OnEnter", function(self)
-        SetColor(self._bg, ACCENT[1], ACCENT[2], ACCENT[3], 0.28)
+        local r, g, b = SignalColor()
+        SetColor(self._bg, r, g, b, 0.28)
     end)
     button:SetScript("OnLeave", function(self)
         SetColor(self._bg, 0.10, 0.13, 0.16, 0.95)
@@ -480,7 +493,8 @@ local function ShowStatusBarTooltip(owner)
     local text, _, state = StatusBarVisual(status)
     GameTooltip:SetOwner(owner, "ANCHOR_TOP")
     GameTooltip:ClearLines()
-    GameTooltip:AddLine(L("PANEL_TITLE"), ACCENT[1], ACCENT[2], ACCENT[3])
+    local accentR, accentG, accentB = SignalColor()
+    GameTooltip:AddLine(L("PANEL_TITLE"), accentR, accentG, accentB)
     GameTooltip:AddDoubleLine(L("LABEL_STATUS"), StateLabel(state), 1, 1, 1, 1, 1, 1)
     GameTooltip:AddDoubleLine(L("LABEL_CURRENT"), text, 1, 1, 1, 1, 1, 1)
     GameTooltip:AddDoubleLine(L("LABEL_TARGET"), MsText(status.target), 1, 1, 1, 1, 1, 1)
@@ -526,7 +540,8 @@ local function CreateStatusBar()
     local bg = bar:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     SetColor(bg, 0.02, 0.03, 0.04, 0.88)
-    AddBorder(bar, ACCENT[1], ACCENT[2], ACCENT[3], 0.55)
+    local borderR, borderG, borderB = SignalColor()
+    AddBorder(bar, borderR, borderG, borderB, STATUS_BAR_BORDER_ALPHA)
 
     -- A font object must be given here: the client raises
     -- "FontString:SetText(): Font not set" if SetText runs before any font is
@@ -817,12 +832,19 @@ local function CreateStandaloneWindow()
     local bg = window:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     SetColor(bg, 0.05, 0.07, 0.09, 0.97)
-    AddBorder(window, ACCENT[1], ACCENT[2], ACCENT[3], 0.85)
+    local windowR, windowG, windowB = SignalColor()
+    AddBorder(window, windowR, windowG, windowB, 0.85)
 
     local title = NewText(window, "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 16, -12)
     title:SetText(L("PANEL_TITLE"))
-    title:SetTextColor(ACCENT[1], ACCENT[2], ACCENT[3])
+    title:SetTextColor(SignalColor())
+    -- 窗口边框与标题也跟着同一个信号色（统一配色：没有第二套颜色）
+    AddUpdater(function()
+        local r, g, b = SignalColor()
+        title:SetTextColor(r, g, b)
+        RecolorBorder(window, r, g, b, 0.85)
+    end)
 
     local close = NewButton(window, 26, 22, L("BUTTON_CLOSE"))
     close:SetPoint("TOPRIGHT", -12, -12)

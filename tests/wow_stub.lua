@@ -639,8 +639,16 @@ _G.GameTooltip = {
 }
 
 function _G.GameTooltip:SetOwner(owner) self.owner = owner end
-function _G.GameTooltip:ClearLines() self.lines = {} end
-function _G.GameTooltip:AddLine(text) self.lines[#self.lines + 1] = tostring(text) end
+function _G.GameTooltip:ClearLines()
+    self.lines = {}
+    self.lineColors = {}
+end
+function _G.GameTooltip:AddLine(text, r, g, b)
+    self.lines[#self.lines + 1] = tostring(text)
+    -- Colours are recorded too: "every surface uses the one palette" is a
+    -- promise the suite has to be able to check.
+    self.lineColors[#self.lines] = { tonumber(r) or 1, tonumber(g) or 1, tonumber(b) or 1 }
+end
 function _G.GameTooltip:AddDoubleLine(left, right)
     self.lines[#self.lines + 1] = tostring(left) .. "\t" .. tostring(right)
 end

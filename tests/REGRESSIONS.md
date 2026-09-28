@@ -140,6 +140,8 @@
   反之 `tools/verify.ps1` 会检查必备 spec 是否存在——删掉 `spec_cvar.lua` 时
   `run-tests.mjs` 仍会「通过」（只是少跑一大截断言），结构检查就是为了堵住这种静默失效。
 
+| 18 | **统一配色时 `SignalColor()` 返回了颜色表**（而不是三个通道值）：调用处按 `r,g,b` 解包 → 提示标题的 `AddLine(text, table, nil, nil)`、按钮悬停与窗口边框全都拿到无效颜色 | 新加的「统一配色」用例断言「偏高时提示标题必须为红」，实得白（`color1=1/1/1`）→ 当场暴露 | 真机上提示标题颜色失效（`AddLine` 收到表），且失败时提示不会变红 | `spec_options` `统一配色…`（断言提示标题在正常=白、偏高=红，且不含旧品牌绿） |
+
 ## 5. UI / 本地化覆盖
 
 `run-tests.mjs` 按 `.toc` 顺序把六个运行期文件加载进同一个 `ns`（Locale 最先、Options 最后）；
@@ -160,6 +162,8 @@ UI 用例直接调用**真实的** `OnClick` / `OnUpdate` / `OnShow` / `OnDragSt
 | 偏高判据 = `clamp(平时+60, 120, 250)`：平时 200ms 的人不该永远红 | `spec_latency` `延迟是否偏高…`（含 200→210 正常、200→300 偏高、无基准用 120） |
 | 偏高时提示必须说明「为什么红」（当前值 + 平时值）；正常时不得出现该行 | `spec_options` `偏高时悬停提示必须说明…` |
 | 状态条 **1px 边框与数字同色**（正常→白、偏高→红、关闭→灰） | `spec_options` `数字颜色随延迟品质变化…`（断言四条边纹理的 RGB 与文字色一致） |
+| **只有一套配色**：任何表面都不得再用旧品牌绿；提示标题跟随信号色；调色板由 Options 发布给 Core（
+s.AccentColor）供聊天前缀使用 | `spec_options` `统一配色…` |
 | **玩家可见设置恰好两个**（enabled / showStatus），面板里只有两个开关，v1 旋钮一个不剩 | `spec_options` `面板必须极简…`（守门用例）、`开关：只有 enabled 与 showStatus…` |
 | v1 的旋钮不会靠任何代码路径复活（SetConfig 拒绝退休键，旧存档被 Sanitize 清掉） | `spec_core` `SetConfig…`、`Sanitize: 错类型与越界…`；`spec_options` `面板不再暴露任何可调参数…` |
 | 配置白名单：新增任何配置键都必须经过审阅 | `spec_core` `结构: 配置白名单…` |

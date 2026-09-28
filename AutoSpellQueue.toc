@@ -1,5 +1,5 @@
 ## Interface: 120000, 120001, 120005, 120007, 120100, 120105
-## Title: |cff0cd29fAuto|r Spell Queue
+## Title: Auto Spell Queue
 ## Notes: Keeps the spell queue window (SpellQueueWindow) tuned to your class, spec and latency. Set and forget.
 ## Notes-zhCN: 依据职业/专精与网络延迟，自动调整施法队列窗口（SpellQueueWindow）。装上即可，无需设置。
 ## Notes-zhTW: 依職業/專精與網路延遲，自動調整施法佇列視窗（SpellQueueWindow）。裝上即可，無需設定。

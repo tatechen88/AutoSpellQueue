@@ -673,9 +673,25 @@ local function SetError(reason)
 end
 Core.SetError = SetError
 
+--- Chat prefix in the same colour as everything else on screen.
+--  Options publishes the palette (`ns.AccentColor`); the core does not own any
+--  colours of its own, so there is exactly one place that decides them.
+local function PrefixColorCode()
+    local accent = ns.AccentColor
+    if type(accent) ~= "function" then return "|cff0cd29f" end
+    local ok, r, g, b = pcall(accent)
+    if not ok or type(r) ~= "number" then return "|cff0cd29f" end
+    local function channel(value)
+        local n = math.floor((value or 1) * 255 + 0.5)
+        if n < 0 then n = 0 elseif n > 255 then n = 255 end
+        return string.format("%02x", n)
+    end
+    return "|cff" .. channel(r) .. channel(g) .. channel(b)
+end
+
 local function Output(message)
     if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
-        DEFAULT_CHAT_FRAME:AddMessage("|cff0cd29fAutoSpellQueue|r: " .. message)
+        DEFAULT_CHAT_FRAME:AddMessage(PrefixColorCode() .. "AutoSpellQueue|r: " .. message)
     elseif type(print) == "function" then
         print("AutoSpellQueue: " .. message)
     end
