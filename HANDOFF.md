@@ -112,6 +112,31 @@ pwsh tools/verify.ps1 -Package   # 追加 dist/AutoSpellQueue-<version>.zip
 玩家可见设置只有 2 个、配置白名单、面板 ≤6 行且每行 ≤60 字节、只有一套配色、显示名随语言而内部名恒定。
 完整列表与对应测试见 [`tests/REGRESSIONS.md`](tests/REGRESSIONS.md)——**改动前先读它**。
 
+## CurseForge 上传：暂停点（2026-09-28 晚）
+
+**状态：GitHub Release v2.0.0 已发布（含 zip，digest 已验证）；CurseForge 未动工。**
+玩家将先在**另一个项目**里亲自执行一次 CurseForge 上传，作为流程参考；恢复时先看那次怎么走的。
+
+已完成的前置：
+
+- 命名占用检查 ✓：CurseForge 无同名 `AutoSpellQueue`（竞品：SpellQueueOptimizer / TSpellQueueOptimizer /
+  SSQW / AyuQueue——文案差异点已有：三语、抖动自适应余量、事件驱动采样、所有权归还、极简 UI）。
+- 素材齐备：`docs/media/`（logo + 三语截图）、三语文案 `docs/DESCRIPTION.md`。
+
+本轮 computer-use 探测结论（恢复时直接用，别再踩）：
+
+| 发现 | 细节 |
+|---|---|
+| 登录会话 | Chrome（pid 会变，用窗口标题找 "Authors CurseForge"）已有作者站登录态；StockTake 项目 ID 1714499 |
+| 眼睛可用 | **OmniParser**（`D:\AI\Workspaces\Game\OmniParser`，`run_parse.py <png>`）≈15s/张，OCR 文本 + 图标坐标都有；截图裁掉任务栏（0,0,2560,1400） |
+| 可编程导航 | `cua do get_window_state` 的 UIA 元素里有**地址栏 Edit（set_value 动作）**，可直接设 URL，不吃 Chromium 拒绝注入的亏 |
+| 输入通道 **不可用** | `click` 后台/前台两种模式 Chromium 都**不响应**（试验：点 Description 标签页无效）。下次换路：UIA `invoke`（需先让 Chrome 暴露网页内容树）或 `browser_prepare`/CDP，或参考玩家手动上传的实际界面改走 API/文件路线 |
+| Jev | 文本-only（`api.typesafe.ai/v1/systemone`，key 在 HKCU），只能判文本状态，**看不了图**；本项目用 OmniParser 代替眼睛 |
+
+辅助脚本已留在 `.scratch/cf_helper.ps1`（Look/ClickAt/TypeAt/FindText，gitignored）。
+恢复流程：拿到玩家参考后的流程 → 建项目（游戏 WoW / 类型 Addon / 分类 Combat）→ **拿到 Project-ID 先写进 `.toc`** →
+`verify.ps1 -Package` → 上传 zip → 商店页填三语文案与素材。
+
 ## 下一步
 
 1. 走一遍上面「只需你点几下」的清单（本机已安装，直接上号）。有异常把 `/asq status` 输出贴回来。
