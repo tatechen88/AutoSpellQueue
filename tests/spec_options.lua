@@ -380,6 +380,56 @@ T.test("高级折叠：点击写入 showAdvanced 并真的显示/隐藏高级区
     T.falsy(advanced:IsShown(), "再次点击应收起")
 end)
 
+T.test("修复: 带提示的行，标签必须顶对齐、提示在下方（否则两行字叠在一起）", function()
+    Boot()
+    -- 主区域的「启用自动调整」是唯一带提示的开关行。
+    local row = RowOf("SETTING_ENABLED")
+    T.notNil(row, "找不到启用开关所在的行")
+
+    local label, hint
+    for _, widget in ipairs(Stub.Widgets()) do
+        if widget.parent == row and widget.__kind == "FontString" then
+            if widget.text == Core.L("SETTING_ENABLED") then label = widget end
+            if widget.text == Core.L("SETTING_ENABLED_HINT") then hint = widget end
+        end
+    end
+    T.notNil(label, "行内应有标题")
+    T.notNil(hint, "行内应有提示文字")
+
+    local point, _, _, _, labelY = label:GetPoint()
+    T.eq(point, "TOPLEFT", "带提示的标签必须顶对齐；居中会被提示压住（真机上表现为两行字重叠）")
+
+    local _, _, _, _, hintY = hint:GetPoint()
+    T.truthy(hintY <= labelY - 18,
+        "提示必须落在标签下方（标签 y=" .. tostring(labelY) .. "，提示 y=" .. tostring(hintY) .. "）")
+end)
+
+T.test("修复: 内容变高时必须靠滚动，而不是把宿主撑大（否则溢出设置窗口）", function()
+    Boot()
+    local scroll = Stub.FindFrame("AutoSpellQueueOptionsScroll")
+    T.notNil(scroll, "设置内容必须放在滚动框里，否则高级设置会画到窗口外")
+    local content = scroll.__scrollChild
+    T.notNil(content, "滚动框必须有内容子框")
+    local host = scroll.parent
+    T.notNil(host, "滚动框必须有宿主")
+
+    resetWorld({ showAdvanced = false })
+    Options.Refresh()
+    local hostHeight = host:GetHeight()
+    local collapsed = content:GetHeight()
+
+    Click(FindButtonByText(Core.L("ADVANCED_SHOW")))
+    Options.Refresh()
+    local expanded = content:GetHeight()
+    T.truthy(expanded > collapsed,
+        "展开高级设置后内容应变高（多出来的部分靠滚动看，而不是画到窗口外）")
+    T.eq(host:GetHeight(), hostHeight, "宿主高度不得被内容撑大——真机上表现为面板溢出设置窗口")
+
+    Click(FindButtonByText(Core.L("ADVANCED_HIDE")))
+    Options.Refresh()
+    T.eq(content:GetHeight(), collapsed, "收起后内容高度应还原")
+end)
+
 T.test("重置按钮：两段确认，4 秒后经 C_Timer 自动解除", function()
     Boot()
     resetWorld({ margin = 200 })

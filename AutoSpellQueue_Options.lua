@@ -375,9 +375,16 @@ local function AddRow(parent, y, height)
     return row, y - height - ROW_GAP
 end
 
-local function AddRowLabel(row, key)
+--- Row label. `stacked` is for rows that also carry a hint: the label then sits
+--- at the top of the row instead of being vertically centred, otherwise it is
+--- drawn on top of the hint (the client has no automatic layout).
+local function AddRowLabel(row, key, stacked)
     local label = NewText(row, "GameFontNormal")
-    label:SetPoint("LEFT", 12, 0)
+    if stacked then
+        label:SetPoint("TOPLEFT", 12, -6)
+    else
+        label:SetPoint("LEFT", 12, 0)
+    end
     label:SetText(L(key))
     label:SetJustifyH("LEFT")
     return label
@@ -385,7 +392,7 @@ end
 
 local function AddRowHint(row, key)
     local hint = NewText(row, "GameFontNormalSmall")
-    hint:SetPoint("TOPLEFT", 12, -16)
+    hint:SetPoint("TOPLEFT", 12, -25)
     hint:SetWidth(INNER_WIDTH - 40)
     hint:SetJustifyH("LEFT")
     hint:SetWordWrap(true)
@@ -408,9 +415,10 @@ end
 
 --- Toggle row: right aligned switch plus a localised on/off word.
 local function AddToggle(parent, y, labelKey, get, set, hintKey)
-    local height = hintKey and 46 or ROW_HEIGHT
+    -- Hinted rows are two lines: label on top, hint underneath.
+    local height = hintKey and 56 or ROW_HEIGHT
     local row, nextY = AddRow(parent, y, height)
-    AddRowLabel(row, labelKey)
+    AddRowLabel(row, labelKey, hintKey ~= nil)
     if hintKey then AddRowHint(row, hintKey) end
 
     local stateText = NewText(row, "GameFontNormalSmall")
@@ -772,10 +780,10 @@ local applyAdvancedView
 local panelReady = false
 
 local function SetContentHeight(content, height)
+    -- Only the scroll child grows; the host (settings canvas or standalone
+    -- window) keeps the size the client gave it, otherwise the panel pushes
+    -- itself past the bottom of the settings window.
     content:SetHeight(height)
-    if host and host.SetHeight then
-        host:SetHeight(height + PANEL_PAD * 2)
-    end
 end
 
 --- Opens the settings page: the Blizzard category when it exists, otherwise the
@@ -801,9 +809,20 @@ function OpenOptions()
 end
 
 local function BuildUI(contentParent)
-    local content = CreateFrame("Frame", nil, contentParent)
-    content:SetPoint("TOPLEFT", contentParent, "TOPLEFT", PANEL_PAD, -PANEL_PAD)
-    content:SetPoint("TOPRIGHT", contentParent, "TOPRIGHT", -PANEL_PAD, -PANEL_PAD)
+    -- Everything lives inside a scroll frame. The advanced section is taller
+    -- than the settings area, and the client scrolls nothing for us: without
+    -- this the lower rows were drawn outside the window (on top of Blizzard's
+    -- own Close button) instead of being clipped and scrollable.
+    local scroll = CreateFrame("ScrollFrame", "AutoSpellQueueOptionsScroll", contentParent,
+        "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", contentParent, "TOPLEFT", 0, 0)
+    scroll:SetPoint("BOTTOMRIGHT", contentParent, "BOTTOMRIGHT", -26, 2)
+
+    local content = CreateFrame("Frame", nil, scroll)
+    content:SetPoint("TOPLEFT", scroll, "TOPLEFT", PANEL_PAD, -PANEL_PAD)
+    content:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", -PANEL_PAD, -PANEL_PAD)
+    content:SetHeight(10)
+    scroll:SetScrollChild(content)
 
     -- Throttled refresh ticker for the panel. It is a child of the panel on
     -- purpose: the client does not call OnUpdate on a frame whose parent is
@@ -1315,14 +1334,11 @@ local function CreateStandaloneWindow()
     close:SetPoint("TOPRIGHT", -12, -12)
     close:SetScript("OnClick", function() window:Hide() end)
 
-    local scroll = CreateFrame("ScrollFrame", "AutoSpellQueueOptionsScroll", window,
-        "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", 8, -44)
-    scroll:SetPoint("BOTTOMRIGHT", -30, 10)
-
-    local child = CreateFrame("Frame", nil, scroll)
-    child:SetSize(PANEL_WIDTH, 420)
-    scroll:SetScrollChild(child)
+    -- No scroll frame of its own: BuildUI owns one for every host, so nesting
+    -- two of them would fight over the same content height.
+    local body = CreateFrame("Frame", nil, window)
+    body:SetPoint("TOPLEFT", 8, -44)
+    body:SetPoint("BOTTOMRIGHT", -8, 10)
 
     if type(UISpecialFrames) == "table" then
         table.insert(UISpecialFrames, "AutoSpellQueueOptionsFrame")
@@ -1332,8 +1348,7 @@ local function CreateStandaloneWindow()
     window:Hide()
 
     standalone = window
-    host = child
-    host:SetHeight(420)
+    host = body
     return window
 end
 

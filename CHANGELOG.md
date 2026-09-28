@@ -32,6 +32,7 @@
 7. **新增本地验证门禁与可复现打包** —— 语法检查、单元测试、结构与版本一致性检查、打包内容校验，一条命令跑完（数量会随版本变化，跑 `pwsh tools/verify.ps1` 看当次输出）。
 8. **第二轮逐行审查的收尾修复** —— 关掉插件后若归还被战斗推迟或写失败，15 秒定时器继续重试（不再依赖下次换图）；上限低于 50ms 时面板给出警告；状态条几何异常时不再抛错、也不会把 NaN 写进存档；`/asq status` 的「当前值」改为实时读取并标注采样时间。
 9. **修复「进入游戏后界面完全没有任何显示」** —— 状态条的字体串创建时未绑定字体，客户端在 `SetText` 时抛 `FontString:SetText(): Font not set`，而这个错误发生在界面初始化流程里，导致状态条与设置面板一起没被建出来。现在字体串自带字体，并且**每个界面部件独立初始化**：任何一个部件失败都会在聊天框报出部件名与原因，且不再影响其它部件（设置面板优先注册）。测试桩同步加严，按客户端规则模拟「无字体不得 SetText」，杜绝同类问题再次漏网。
+10. **修复设置页布局：提示文字重叠 + 展开高级设置后溢出窗口** —— ①带提示的开关行里标签原本垂直居中，与提示画在同一位置（表现为「启用自动调整pellQueueWindow 还原成你原本的值。」这种两行字叠在一起）；②设置内容比画布高时客户端不会替你滚动，旧代码还把宿主高度一起撑大，于是下面的行画到窗口外、盖住暴雪的「关闭」按钮。现在提示行的标签顶对齐、提示下移，且**所有设置内容放进滚动框**（设置画布与独立窗口共用同一套滚动），内容再高也只在框内滚动。
 
 #### 升级须知（破坏性变更）
 
@@ -70,6 +71,7 @@
 7. **New local verification gate + reproducible packaging** — syntax check, unit tests, structure and version consistency, package content validation, in one command (counts change per release; run `pwsh tools/verify.ps1` for the current numbers).
 8. **Follow-up fixes from a line-by-line review** — if the restore is deferred by combat or the write fails, the 15 s timer keeps retrying instead of waiting for the next zone change; the panel warns when the cap is below 50 ms; broken status-bar geometry no longer raises or stores NaN; `/asq status` now prints the live value and labels the sample age.
 9. **Fixed "nothing at all shows up in game"** — the status bar's font string had no font bound, so the client raised `FontString:SetText(): Font not set` during UI setup, which took both the status bar and the settings panel down with it. The string now carries a font, and **every UI part initialises independently**: a failure names the part and the reason in chat and no longer blocks the rest (the settings panel is registered first). The test double now models the client rule ("no font ⇒ SetText fails") so this class of bug cannot slip through again.
+10. **Fixed two settings-page layout bugs: overlapping hint text, and content spilling out of the window** — (1) in rows that carry a hint, the label was vertically centred and drawn on top of the hint (it looked like `启用自动调整pellQueueWindow 还原成你原本的值。`, i.e. two lines stacked on one); (2) the client does not scroll a settings canvas, and the old code also grew the host frame with the content, so the lower rows were painted outside the window and over Blizzard's own Close button. Hinted rows now top-align their label, and **all settings content lives in a scroll frame** shared by the settings canvas and the standalone window, so tall content scrolls instead of overflowing.
 
 #### Upgrading (breaking changes)
 
