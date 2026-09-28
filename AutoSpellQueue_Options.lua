@@ -632,7 +632,7 @@ local function ShowStatusBarTooltip(owner)
     if not GameTooltip then return end
     local status = Core.GetStatus()
     local text, _, state = StatusBarVisual(status)
-    -- ANCHOR_NONE: we place it ourselves (see AnchorStatusBarTooltip) instead of
+    -- ANCHOR_NONE: we place it ourselves (see PlaceStatusBarTooltip) instead of
     -- letting the client put it flush against the readout.
     GameTooltip:SetOwner(owner, "ANCHOR_NONE")
     GameTooltip:ClearLines()

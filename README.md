@@ -2,8 +2,8 @@
 
 > 中文 · [English](#english)
 
-自动把《魔兽世界》正式服的**施法队列窗口**（`SpellQueueWindow`）保持在适合你专精、网络延迟**与抖动**的值，
-并在它不再管理这个设置时，**把你自己原来的值还回去**。
+自动把《魔兽世界》正式服的**施法容限**（`SpellQueueWindow`，也常被叫作施法队列窗口）保持在适合你
+专精、网络延迟**与抖动**的值，并在它不再管理这个设置时，**把你自己原来的值还回去**。
 
 > 正式服 12.x（12.0.0–12.1.5）· v2.0.0 · MIT · 界面语言 enUS / zhCN / zhTW
 > 原名 `Tate_ASQ`（Tate's AutoSpellQueue），v2.0.0 起更名为 **AutoSpellQueue**。
@@ -19,18 +19,20 @@ README 只保留「装、跑、验证」这类实用信息（中英各一份）�
 
 1. 下载 [Releases](https://github.com/tatechen88/AutoSpellQueue/releases) 里的 zip。
 2. 解压到 `World of Warcraft\_retail_\Interface\AddOns\`，得到 `AddOns\AutoSpellQueue\`。
-3. 进游戏。**默认就是开着的，不需要配置——面板里只有两个开关。**
+3. 进游戏。**默认就是开着的，不需要配置——面板里只有两个复选框。**
 
 设置入口：游戏内 **选项 → 插件 → 施法容限**（英文界面为 `Auto Spell Queue`），或 `/asq`，或左键点悬浮状态条。
 设置页与姊妹插件 **StockTake（数量盘点）** 同一套做法：暴雪原生控件、零自绘、只有四个元素
 （标题、一行状态、两个复选框、一个「重置位置」按钮），说明放在鼠标悬停提示里。
 
-**面板里只有两个开关**（总开关、要不要显示悬浮读数）。安全余量、写入阈值、延迟来源、窗口上下限、
-多久检测一次，全部由插件按实测数据自己决定——把旋钮交给玩家，等于把「调得好不好」的责任推给玩家。
+**面板里只有两个复选框**：「启用自动调整」（总开关）和「显示悬浮状态条」。
+安全余量、写入阈值、延迟来源、窗口上下限、多久检测一次，全部由插件按实测数据自己决定——
+把旋钮交给玩家，等于把「调得好不好」的责任推给玩家。
 唯一的手动口子是命令行的 `/asq base <50-400>`（某专精的基础值你不同意时才用），它**不出现在面板里**。
 
-**屏幕上的数字会说话**：延迟正常时是白色（连边框一起白），明显高于你平时的水平就变成红色；
-失败 / 等待 / 关闭用各自的状态色。判据是相对**你自己平时**的延迟（`平时 + 60ms`，下限 120ms、上限 250ms），
+**屏幕上的数字会说话**：数字本身是容限值（比如 `220 ms`），但它的**颜色**说的是你的网络——
+延迟正常时白色（边框一起白），明显高于你平时的水平就转红；失败 / 等待 / 关闭用各自的状态色。
+判据是相对**你自己平时**的延迟（`平时 + 60ms`，下限 120ms、上限 250ms），
 所以平时就 200ms 的人不会永远看到红色。悬停状态条会写明「为什么是红的」。
 
 **它不会一直检测**：登录 / 换区 / 进副本团本时采样一小段，读数稳定后**停止采样**，
@@ -52,13 +54,17 @@ README 只保留「装、跑、验证」这类实用信息（中英各一份）�
 | 看它为什么是这个值 | `/asq` → 状态行、悬停提示里有完整算式（含自适应余量） |
 | 看诊断（含算法当前的余量/抖动/采样策略/写入次数） | `/asq status` |
 | 临时全关、把值还给我 | `/asq` 里取消勾选总开关（战斗中点会等到脱战） |
-| 状态条跑到屏幕外了 | `/asq unlock` |
+| 状态条跑到屏幕外了 | `/asq resetpos`（`/asq unlock` 同义）——立即拉回屏幕内的默认位置 |
 | 某个专精的基础值我想自己定 | `/asq base 180`（恢复自动：`/asq base auto`） |
 
 ### 它不做什么
 
 不自动施法、不代按键、不做输出循环、不读战斗日志、不联网、无遥测。
 它改的就是**你自己也能用 `/console SpellQueueWindow 200` 改的那个数字**。
+
+### 许可证
+
+MIT，见 [`LICENSE`](LICENSE)。反馈走 [GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues)。
 
 ---
 
@@ -130,16 +136,18 @@ The settings page follows our sibling addon **StockTake**: Blizzard-native contr
 elements only (title, one status line, two checkboxes, one "reset position" button), with the explanations on
 mouse-over tooltips.
 
-**Two checkboxes, that is the whole configuration** (master switch, and whether the floating readout is drawn).
-Safety headroom, write threshold, latency source, window limits and how often to probe are all decided by the
-addon from what it measures - handing those knobs to a player just moves the responsibility for getting them
-right onto the player. The only manual escape hatch is the command `/asq base <50-400>` (pin the base value for
-one spec); it is deliberately **not** in the panel.
+**Two checkboxes, that is the whole configuration**: "Enable auto tuning" (the master switch) and
+"Show floating status bar". Safety headroom, write threshold, latency source, window limits and how often
+to probe are all decided by the addon from what it measures - handing those knobs to a player just moves
+the responsibility for getting them right onto the player. The only manual escape hatch is the command
+`/asq base <50-400>` (pin the base value for one spec); it is deliberately **not** in the panel.
 
-**The number on screen talks**: white while your latency is what this machine normally sees (border included),
-red once it is clearly worse than usual; failure / waiting / disabled keep their own state colour. The rule is
-relative to **your own normal** (`normal + 60 ms`, floored at 120 ms and capped at 250 ms), so a player who
-lives at 200 ms is not stuck looking at red. Hovering the readout spells out **why** it is red.
+**The number on screen talks**: the number itself is the tolerance value (e.g. `220 ms`), but its
+**colour** is about your connection - white while your latency is what this machine normally sees
+(border included), red once it is clearly worse than usual; failure / waiting / disabled keep their own
+state colour. The rule is relative to **your own normal** (`normal + 60 ms`, floored at 120 ms and capped
+at 250 ms), so a player who lives at 200 ms is not stuck looking at red. Hovering the readout spells out
+**why** it is red.
 
 **It does not keep probing**: it samples briefly on login, zone changes and when you enter a dungeon or raid,
 then **stops sampling** once the reading settles - after that it only does one cheap drift check every 300 s
@@ -163,7 +171,7 @@ right value.
 | See why it is that value | `/asq` - the status line and its tooltip show the full formula (including adaptive headroom) |
 | See diagnostics (headroom, jitter, sampling policy, write count) | `/asq status` |
 | Turn it off and get my value back | Untick the master checkbox in `/asq` (in combat it waits for combat to end) |
-| The readout ended up off-screen | `/asq unlock` |
+| The readout ended up off-screen | `/asq resetpos` (`/asq unlock` works too) - snaps it straight back to the default on-screen spot |
 | Pin the base value for one spec | `/asq base 180` (back to automatic: `/asq base auto`) |
 
 ### What it never does
