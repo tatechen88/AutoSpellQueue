@@ -186,9 +186,18 @@ end
 --  Write
 -------------------------------------------------------------------------------
 
+--- Rounds both sides to whole milliseconds before comparing.
+--  Anything that is not a finite number on both sides counts as "not equal"
+--  (nil, strings, NaN) - never raises, because every caller treats a false
+--  result as "the value is not ours", which is the safe direction.
 local function SameValue(a, b)
     if a == nil or b == nil then return false end
-    return math.floor(tonumber(a) + 0.5) == math.floor(tonumber(b) + 0.5)
+    local na, nb = tonumber(a), tonumber(b)
+    if na == nil or nb == nil or na ~= na or nb ~= nb then return false end
+    if na == math.huge or na == -math.huge or nb == math.huge or nb == -math.huge then
+        return false
+    end
+    return math.floor(na + 0.5) == math.floor(nb + 0.5)
 end
 CVar.SameValue = SameValue
 

@@ -163,6 +163,13 @@ T.test("SameValue 按四舍五入比较，nil 永不相等", function()
     T.falsy(CVar.SameValue(nil, 200))
     T.falsy(CVar.SameValue(200, nil))
     T.falsy(CVar.SameValue(nil, nil))
+    -- 非数字输入一律按「不相等」处理，绝不抛错：false 是安全方向（值不算我们的）
+    T.falsy(CVar.SameValue("abc", 200), "非数字字符串不得抛错")
+    T.falsy(CVar.SameValue(200, "abc"))
+    T.falsy(CVar.SameValue("", 0))
+    T.falsy(CVar.SameValue(0 / 0, 0 / 0), "NaN 按不相等处理")
+    T.falsy(CVar.SameValue(math.huge, math.huge), "inf 按不相等处理")
+    T.truthy(CVar.SameValue("200", 200), "数字字符串仍按数值比较")
 end)
 
 ------------------------------------------------------------------------------

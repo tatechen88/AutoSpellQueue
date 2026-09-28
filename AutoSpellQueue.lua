@@ -704,7 +704,11 @@ function Core.Refresh(reason)
     local cfg = Core.GetConfig()
     local snap = Core.Snapshot()
     local action = Core.Decide(cfg, snap)
-    return Core.Execute(action, snap)
+    local result = Core.Execute(action, snap)
+    -- A deferred or failed restore must keep retrying even after the addon is
+    -- switched off, so the timer follows the work, not just the switch.
+    Core.SyncTicker()
+    return result
 end
 
 --- Puts the player's original value back if the addon still owns it.
@@ -736,12 +740,8 @@ end
 function Core.SetEnabled(value)
     local cfg = Core.GetConfig()
     cfg.enabled = value and true or false
-    if cfg.enabled then
-        Core.StartTicker()
-    else
-        Core.StopTicker()
-    end
     Core.Refresh(cfg.enabled and "enable" or "disable")
+    Core.SyncTicker()
     return cfg.enabled
 end
 
@@ -805,7 +805,6 @@ end
 --  Timers
 -------------------------------------------------------------------------------
 Core.ticker = nil
-Core.timers = {}
 
 local function NewTimer(seconds, callback)
     if C_Timer and C_Timer.After then
@@ -828,6 +827,19 @@ function Core.StopTicker()
     if Core.ticker then
         if Core.ticker.Cancel then Core.ticker:Cancel() end
         Core.ticker = nil
+    end
+end
+
+--- Keeps the refresh timer alive while there is still work to do: either the
+--- addon is enabled, or it still owns a value it has not managed to give back
+--- (deferred because of combat, or a failed write). Without this, "leave no
+--- trace" would stall until the next zone change.
+function Core.SyncTicker()
+    local cfg = Core.db
+    if cfg and (cfg.enabled or (cfg.ownership and cfg.ownership.active)) then
+        Core.StartTicker()
+    else
+        Core.StopTicker()
     end
 end
 
@@ -865,18 +877,18 @@ local HANDLERS = {
     end,
     PLAYER_LOGIN = function()
         if not Core.initialized then Core.GetConfig() end
-        if Core.GetConfig().enabled then
-            Core.StartTicker()
-        end
+        -- Covers the case where a previous session could not give the value
+        -- back: ownership is still recorded, so the timer must keep running.
+        Core.SyncTicker()
     end,
     PLAYER_ENTERING_WORLD = function()
         if not Core.initialized then Core.GetConfig() end
         Core.inWorld = true
         Core.Refresh("enter-world")
         if Core.GetConfig().enabled then
-            Core.StartTicker()
             Core.ScheduleWarmup()
         end
+        Core.SyncTicker()
     end,
     PLAYER_SPECIALIZATION_CHANGED = function(unit)
         -- Fires for party/raid members too; only the player matters here.

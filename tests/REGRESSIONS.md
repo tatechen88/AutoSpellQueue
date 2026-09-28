@@ -31,29 +31,47 @@
 | 4 | `Execute()` 只在 `kind == "none"` 时记 `externalChange`，重新夺回管理时诊断丢失 | 写 350 → 外部改 333 → `Refresh()` 后 `externalChange == false` | UI 无法如实告知「值被别人改过」 | `spec_core` `外部改值后重新夺回管理时 externalChange 诊断不应丢失` |
 | 5 | `Formula.Clamp(NaN, lo, hi)` 返回 NaN，与注释「never returns NaN」矛盾 | `Formula.Clamp(0/0, 50, 400) == NaN` | Options 夹用户输入时得到 NaN | `spec_formula` `Clamp(NaN) 的结果必须是有限数字…` |
 | 6 | **UI 把「战斗中禁用」显示成「已关闭」**：`ResolveState` 在 `enabled=false` 时把 `pending` 一并压成 `disabled`，而文档承诺「战斗中关插件会显示等待脱战」 | 状态条喂 `{enabled=false, state="pending", live=245}` → 显示「已关闭」而非数字 | 玩家以为值已被还回去；文档与 UI 矛盾 | `spec_options` `状态卡：六种状态…` 的 `disabled+pending (combat)` 夹具、`状态条：…` 的关闭中等待脱战断言 |
+| 7 | **归还被推迟/失败后不再重试**：`SetEnabled(false)` 无条件停掉 15 秒 ticker，若归还被战斗推迟或写失败，重试只能等下一次 zone/spec/脱战事件——玩家原地不动就永远不还 | 战斗中禁用 → `Core.ticker == nil`；`reject-false` 让归还失败 → 无任何后续重试 | 「关掉插件就把值还给你」在真实场景下可能不兑现 | `spec_core` `修复: 归还被推迟或失败时，定时器必须继续跑…`（含失败后靠 ticker 最终归还） |
+| 8 | **上限可低到把施法队列压没**：`maxWindow` 与 `minWindow` 都低于 50ms 时（`min≤max` 合法），公式把一切目标 clamp 成 ≤49ms | `{minWindow=10, maxWindow=30}` → 目标 30 | 凭手感改设置会把预输入时间压到几乎没有，界面一声不吭 | `spec_options` `修复: 上限低于 50ms 时必须给出警告…`（同时钉住 `Sanitize` 对 `min>max` 的复位保护） |
+| 9 | **NaN 几何能写进存档甚至抛错**：`Options.Clamp` 缺 NaN 防护，`math.floor(NaN+0.5)` 在 Lua 5.3 直接报错 | 拖动结束时 `GetLeft/GetTop` 返回 NaN → 保存位置抛错 | 脚本处理器里抛错（客户端表现为报错刷屏），坐标也可能写成 NaN | `spec_options` `修复: 状态条几何返回 NaN 时不得写出 NaN 坐标，更不得抛错` |
+| 10 | **`CVar.SameValue` 对非数字抛错**：`tonumber` 得 nil 后直接 `math.floor(nil)` | `CVar.SameValue("abc", 200)` → error | 潜在脆弱：任何脏值流到这里都会炸掉刷新链 | `spec_cvar` `SameValue…` 的非数字/NaN/inf 断言 |
+| 11 | **诊断输出的「当前值」用的是快照**：面板用 `live`，`/asq status` 用 `status.current`，报 bug 时会误导 | 快照 150 / 实际 300 时 `/asq status` 打印 150 | 玩家按诊断报 bug，拿到的是过期数字 | `spec_options` `修复: 诊断里的「当前值」必须是实时读，且标注采样时间` |
+| 12 | `Core.timers = {}` 死字段 | 从未被读写 | 无害噪音 | 无（删除即可；`grep -n "Core.timers" 应为空`） |
 
-> 第 6 条的教训（覆盖盲区）：`spec_options` 的状态用例喂的是**已解析好的**状态表
-> （每行自带 `state = "…"`），所以 `ResolveState` 的**组合逻辑**（`enabled × state`）
-> 从未被覆盖。教训：对「把一种状态映射成另一种状态」的函数，测试必须喂**原始组合**，
-> 不能喂别人替它算好的结果。已补的组合用例就是为此。
+> 根因提醒：这些缺陷几乎全是「代码与文档/注释说的不一致」而不是崩溃。写完一句承诺，就配一条用例。
+>
+> 另有一类「旧代码把 `pcall` 没抛错当成写成功」的行为，由 `spec_cvar` / `spec_core` 的多条 `P1:` 用例永久锁定
+> （含「API 谎报 true 但值没变」「客户端读不回 + API 返回 nil」等变体）——**不要再用「API 没报错就算成功」的写法**。
 
-此外，「旧代码把 `pcall` 没抛错当成写成功」这一类行为，由 `spec_cvar` / `spec_core` 的多条 `P1:` 用例永久锁定，
-其中包含「API 谎报 true 但值没变」「客户端读不回 + API 返回 nil」等变体——**不要再用「API 没报错就算成功」的写法**。
+### 覆盖盲区的教训
 
-> 根因提醒：这 6 个缺陷全是「代码与文档/注释说的不一致」而不是崩溃。写完一句承诺，就配一条用例。
+第 6 条的成因值得单独记住：`spec_options` 的状态用例喂的是**已解析好的**状态表
+（每行自带 `state = "…"`），于是 `ResolveState` 的**组合逻辑**（`enabled × state`）从未被覆盖。
 
-## 2a. 深度审查（2026-09-28，GLM 模型）遗留的建议 —— 已确认、暂不修
+> 对「把一种状态映射成另一种状态」的函数，测试必须喂**原始组合**，不能喂别人替它算好的结果。
 
-以下问题**已确认存在**，但属于设计权衡或极低概率路径，修复收益小于改动风险，先记录在此：
+### 怎么证明这些用例真的能抓虫
 
-| 级别 | 问题 | 说明与建议 |
-|---|---|---|
-| P3 | `minWindow`/`maxWindow` 可被设为 0，把一切目标 clamp 成 0 | UI 步进允许 0–400；`min=0/max=0` 合法且 `min≤max`，于是插件会主动写 `SpellQueueWindow=0`（等于整个施法队列被关掉）且无警告。建议：把两条步进的下限提到 50，或在 `maxWindow < 50` 时于提示行加警告文案 |
-| P3 | 禁用后「归还失败」的重试依赖事件 | `SetEnabled(false)` 会停掉 15 秒 ticker；若归还写失败（非战斗原因），重试只发生在下一次 zone / spec / PEW / 脱战事件。错误会进聊天与面板（不静默），但玩家原地不动时归还会停摆到下次换图。建议：`ownership` 仍活跃时保持 ticker |
-| P4 | `Options.Clamp` 缺 NaN 防护 | `Formula.Clamp` 已修过同类问题，Options 里的私有副本没同步；当前所有调用点都传有限数字，不可达 |
-| P4 | `CVar.SameValue` 对「非数字字符串」会抛错 | `tonumber` 得 nil 后直接 `math.floor(nil)`；当前全部调用点都有护栏，属潜在脆弱 |
-| P4 | `Core.timers = {}` 是死字段 | 从未被读写，可删 |
-| P4 | `/asq status` 的「当前值」用快照而非实时读 | 面板卡片用 `live`，诊断输出用 `status.current` 且未标采样时间；两边口径不一致 |
+**做法**：把 4 个源文件 `git checkout` 回退到修复前、只保留新测试，跑一次；再恢复。
+
+```
+回退后：FAIL SameValue 按四舍五入比较… / FAIL 修复: 归还被推迟或失败时… /
+        FAIL 暖机… / FAIL 修复: 状态条几何返回 NaN… / FAIL 修复: 上限低于 50ms… /
+        FAIL 修复: 诊断里的「当前值」…        断言 1223 条；通过 126，失败 6
+恢复后：断言 1243 条；通过 132，失败 0，结果: PASS
+```
+
+## 2a. 深度审查（2026-09-28）结论：全部已修，无遗留
+
+两轮审查共确认 12 个缺陷，**现已全部修复并由用例钉住**。审查中确认**站得住**、
+改动时不要破坏的部分：
+
+- `CVar:Write` 对真实客户端各种返回形状（`false` / `nil` / 谎报 `true`）都稳；
+- 所有权生命周期：接管 → 外部改值 → 关闭（只释放不覆盖）；接管 → 写失败 → 关闭
+  （`lastApplied=nil` 走 release，此刻值本就等于 baseline，不写才是对的）；
+- 登出归还失败 → 所有权持久化 → 下次登录仍持有正确 baseline；
+- 脏输入（NaN/inf/字符串/颠倒上下限/坏 ownership）在 `Sanitize` 与 `Formula` 每个入口都有防护；
+- 纯 Lua 位运算的城市标记判定（`HasFlag` 的整除取模）在 `0x100000` / `0x200000` / 组合值上算得正确。
 
 ## 3. 打包可复现性（踩过的坑）
 

@@ -29,7 +29,8 @@
 4. **延迟变化会重算** —— 启用期间每 15 秒一次；登录后按 2 / 5 / 10 / 20 / 40 秒补算，直到客户端能报出非零延迟。
 5. **配置会校验** —— 存档里越界的值、错误类型、颠倒的上下限、坏掉的所有权记录都会被修正回默认并计数；**比当前版本更新的存档不会被降级改写**。
 6. **UI 精简与诚实化** —— 见上；另外面板不可见时不再刷新，控件树只构建一次。
-7. **新增本地验证门禁与可复现打包** —— 语法检查、128 个用例 / 1206 条断言的单元测试、结构与版本一致性检查、打包内容校验，一条命令跑完。
+7. **新增本地验证门禁与可复现打包** —— 语法检查、单元测试、结构与版本一致性检查、打包内容校验，一条命令跑完（数量会随版本变化，跑 `pwsh tools/verify.ps1` 看当次输出）。
+8. **第二轮逐行审查的收尾修复** —— 关掉插件后若归还被战斗推迟或写失败，15 秒定时器继续重试（不再依赖下次换图）；上限低于 50ms 时面板给出警告；状态条几何异常时不再抛错、也不会把 NaN 写进存档；`/asq status` 的「当前值」改为实时读取并标注采样时间。
 
 #### 升级须知（破坏性变更）
 
@@ -65,7 +66,8 @@
 4. **Latency changes are re-evaluated** — every 15 s while enabled, plus a 2 / 5 / 10 / 20 / 40 s warm-up after login until the client reports a non-zero latency.
 5. **Settings are validated** — out-of-range values, wrong types, inverted min/max and broken ownership records are repaired and counted; a save written by a **newer** schema is never downgraded.
 6. **Leaner, honest UI** — see above; the panel no longer refreshes while hidden, and the widget tree is built once.
-7. **New local verification gate + reproducible packaging** — syntax check, 128 unit cases / 1206 assertions, structure and version consistency, package content validation — one command.
+7. **New local verification gate + reproducible packaging** — syntax check, unit tests, structure and version consistency, package content validation, in one command (counts change per release; run `pwsh tools/verify.ps1` for the current numbers).
+8. **Follow-up fixes from a line-by-line review** — if the restore is deferred by combat or the write fails, the 15 s timer keeps retrying instead of waiting for the next zone change; the panel warns when the cap is below 50 ms; broken status-bar geometry no longer raises or stores NaN; `/asq status` now prints the live value and labels the sample age.
 
 #### Upgrading (breaking changes)
 

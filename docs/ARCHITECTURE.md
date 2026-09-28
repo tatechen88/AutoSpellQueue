@@ -48,7 +48,7 @@
 | `adaptive` | `true` | bool | 关掉后只用 base |
 | `latencySource` | `"world"` | `world`/`home`/`avg`/`max` | |
 | `margin` | `50` | 0–300 | 加在延迟上 |
-| `minWindow` / `maxWindow` | `50` / `400` | 0–400，且 min ≤ max | 越界由 `Sanitize` 修正 |
+| `minWindow` / `maxWindow` | `50` / `400` | 0–400，且 min ≤ max | 越界与 `min>max` 由 `Sanitize` 修正；**UI 的上限步进下限是 50**，`maxWindow < 50` 时状态卡给出警告（不改写配置） |
 | `hysteresis` | `10` | 0–100 | 已接管后差值小于它就不写 |
 | `showStatus` | `true` | bool | 悬浮状态条 |
 | `statusFont` / `statusFontSize` | `Fonts\FRIZQT__.TTF` / `12` | 非空字符串 / 8–32 | 可改用 LibSharedMedia 字体名 |
@@ -69,6 +69,8 @@
 4. **战斗中不写。** 战斗中只把状态标为 `pending`，**不缓存待重放目标**；`PLAYER_REGEN_ENABLED` 重新读取实时状态再决策。
    这条对「应用」和「归还」一视同仁。
 5. **登出前归还。** `PLAYER_LOGOUT` 尝试写回 baseline；失败则保留所有权记录，下次登录仍可归还。
+   **刷新定时器跟随「启用 **或** 仍持有所有权」**（`Core.SyncTicker`）：归还被战斗推迟或写失败时，
+   15 秒定时器继续重试，不依赖下一次换图事件。
 6. **未来 schema 不降级。** `schemaVersion` 高于当前值时原样保留并标 `schemaFuture`，不强行改写用户数据。
 7. **外部改值只记录，不覆盖。** 检测到 `current ~= lastApplied` 时记 `stats.externalChangeAt` 并继续按目标管理
    （启用状态下），但 **baseline 不重设**——「归还玩家接管前的值」这句承诺保持不变。
@@ -156,7 +158,8 @@ Core.GetConfig()                  -- 校验后的配置表；改值请走 SetCon
 Core.SetConfig(key, value, opts)  -- opts = { noRefresh = true }；未知键返回 false
 Core.SetEnabled(bool) / Core.IsEnabled()
 Core.ResetSettings()              -- 恢复默认，保留所有权与统计
-Core.Refresh(reason)              -- 重读状态并执行决策；未进世界时什么都不做
+Core.Refresh(reason)              -- 重读状态并执行决策，然后 SyncTicker；未进世界时什么都不做
+Core.SyncTicker()                 -- 定时器跟随「启用 或 仍持有所有权」（归还推迟/失败时不至于停摆）
 Core.RestoreOwnership(reason)     -- 归还玩家原值；返回 ok, reason
 Core.GetLiveValue()               -- 实时读 CVar（不缓存）
 Core.Snapshot()                   -- 最近一次读取的游戏状态

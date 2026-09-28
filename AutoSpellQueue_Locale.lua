@@ -185,6 +185,11 @@ local STRINGS = {
         "偵測到來自更新版本的設定資料，已原樣保留，沒有改寫。",
         "Settings written by a newer version were found and are kept exactly as they are.",
     },
+    ["HINT_MAX_TOO_LOW"] = {
+        "注意：上限低于 50ms，预输入时间几乎被压没，等于关掉施法队列；建议把上限放回 400。",
+        "注意：上限低於 50ms，預輸入時間幾乎被壓沒，等於關掉施法佇列；建議把上限放回 400。",
+        "Heads up: the cap is below 50 ms, which leaves almost no time to queue the next ability. Consider putting the cap back to 400.",
+    },
     ["HINT_SAMPLED"] = {
         "目标值 / 延迟 / 场景 / 专精 = 上一次计算的采样（每 %d 秒刷新一次）；当前值是实时读取。",
         "目標值 / 延遲 / 場景 / 專精 = 上一次計算的取樣（每 %d 秒重新整理一次）；目前值是即時讀取。",

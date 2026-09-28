@@ -82,8 +82,11 @@ local function NumText(value)
     return math.floor(n + 0.5)
 end
 
+--- Clamps a number into [low, high]. Non-numeric and NaN input becomes `low`
+--- (same contract as Formula.Clamp) so a broken value can never reach a widget.
 local function Clamp(value, low, high)
-    local n = tonumber(value) or low
+    local n = tonumber(value)
+    if n == nil or n ~= n then return low end
     if n < low then return low end
     if n > high then return high end
     return n
@@ -1007,6 +1010,12 @@ local function BuildUI(contentParent)
         if status.importedFrom then
             hint = hint .. "  " .. L("HINT_IMPORTED")
         end
+        -- A cap below 50 ms pins the queue window at (almost) nothing, which
+        -- effectively switches spell queueing off. Warn instead of silently
+        -- wrecking the player's rotation.
+        if (NumText(refreshCfg and refreshCfg.maxWindow) or 400) < 50 then
+            hint = hint .. "  " .. L("HINT_MAX_TOO_LOW")
+        end
         if state ~= "disabled" and state ~= "error" and state ~= "unavailable" then
             local latency = NumText(status.latency) or 0
             local world = NumText(status.world) or 0
@@ -1080,7 +1089,7 @@ local function BuildUI(contentParent)
         function() return Cfg().minWindow end,
         function(value) Core.SetConfig("minWindow", value) end, "UNIT_MS")
 
-    row, ay = AddStepper(advanced, ay, "SETTING_MAX", 0, 400, 5,
+    row, ay = AddStepper(advanced, ay, "SETTING_MAX", 50, 400, 5,
         function() return Cfg().maxWindow end,
         function(value) Core.SetConfig("maxWindow", value) end, "UNIT_MS")
 
@@ -1385,7 +1394,14 @@ local function DiagnosticLines(status)
         Add("LABEL_LAST_ERROR", L(key) .. "  [" .. status.lastError .. "]")
     end
     Add("LABEL_ENABLED", status.enabled and L("VALUE_ON") or L("VALUE_OFF"))
-    Add("LABEL_CURRENT", MsText(status.current))
+    -- Same rule as the status card: prefer the live read, fall back to the
+    -- snapshot, and never invent a number. The sample age is printed below so
+    -- "current" and "target" are not read as if they were taken together.
+    if status.live ~= nil then
+        Add("LABEL_CURRENT", MsText(status.live))
+    else
+        Add("LABEL_CURRENT", MsText(status.current))
+    end
     Add("LABEL_TARGET", MsText(status.target))
     Add("LABEL_BASE", MsText(status.base))
     Add("LABEL_LATENCY", MsText(status.latency))
@@ -1402,6 +1418,9 @@ local function DiagnosticLines(status)
     Add("LABEL_REPAIRS", NumText(status.repairs) or 0)
     Add("LABEL_REFRESH", Format("UNIT_SECONDS", NumText(status.refreshSeconds) or 0))
     Add("LABEL_CVAR", CvarText(status.cvarInfo))
+    -- "target / latency are a sample of the last computation" - with its age,
+    -- so a bug report can tell a fresh value from a stale one.
+    lines[#lines + 1] = SampledText(status)
     lines[#lines + 1] = Format("DIAG_FLAGS",
         tostring(status.inWorld and true or false),
         tostring(status.inCombat and true or false),

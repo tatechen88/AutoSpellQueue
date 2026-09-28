@@ -61,6 +61,13 @@ end
 
 T.beforeEach(function() resetWorld() end)
 
+--- Pending timers that are NOT the periodic refresh ticker: the CVAR_UPDATE
+--- debounce and the warm-up retries. The ticker is counted separately because
+--- its lifecycle follows "enabled OR still owning", not just the switch.
+local function PendingNonTicker()
+    return Stub.PendingTimers() - (Core.ticker and 1 or 0)
+end
+
 --- A synthetic snapshot for pure Decide() calls.
 local function baseSnap(overrides)
     local snap = {
@@ -803,6 +810,47 @@ T.test("SetEnabled/IsEnabled 与 ticker 生命周期", function()
     T.eq(Stub.CVarValue(), "150", "禁用归还 baseline")
 end)
 
+T.test("修复: 归还被推迟或失败时，定时器必须继续跑（否则原地不动就永远不还）", function()
+    -- 场景 A：战斗中关闭 → 归还被推迟
+    resetWorld({ enabled = true })
+    Stub.SetCVarValue(150)
+    Stub.worldLatency = 100
+    Core.Refresh("apply")
+    T.eq(Stub.CVarValue(), "245", "先接管并写入")
+    T.notNil(Core.ticker)
+
+    Stub.combat = true
+    Core.SetEnabled(false)
+    T.eq(Core.state, Core.STATE.PENDING, "战斗中禁用应推迟归还")
+    T.eq(Stub.CVarValue(), "245", "战斗中不写")
+    T.notNil(Core.ticker, "还没归还 → 定时器必须继续（否则玩家原地不动就永远不还）")
+
+    Stub.combat = false
+    Core.Refresh("combat-end")
+    T.eq(Stub.CVarValue(), "150", "脱战后归还 baseline")
+    T.isNil(Core.ticker, "归还完成且已禁用 → 定时器停止")
+
+    -- 场景 B：归还写失败 → 靠定时器重试直到成功
+    resetWorld({ enabled = true })
+    Stub.SetCVarValue(150)
+    Core.Refresh("apply")
+    T.eq(Stub.CVarValue(), "245")
+    Stub.combat = true
+    Core.SetEnabled(false)
+    T.notNil(Core.ticker, "推迟中定时器仍在")
+
+    Stub.combat = false
+    Stub.setCVarMode = "reject-false" -- 归还这一笔写失败
+    Core.Refresh("combat-end")
+    T.eq(Core.state, Core.STATE.ERROR, "归还失败必须报错而不是静默")
+    T.notNil(Core.ticker, "归还失败后必须继续重试")
+
+    Stub.setCVarMode = "normal"
+    Stub.Advance(Core.REFRESH_SECONDS + 1)
+    T.eq(Stub.CVarValue(), "150", "定时器重试最终完成归还")
+    T.isNil(Core.ticker, "归还完成后定时器停止")
+end)
+
 ------------------------------------------------------------------------------
 --  Snapshot / status / events / timers
 ------------------------------------------------------------------------------
@@ -1008,11 +1056,11 @@ T.test("事件: CVAR_UPDATE 去抖 0.5 秒，且忽略别的 CVar", function()
     Core.lastReason = nil
 
     Stub.FireEvent("CVAR_UPDATE", "SomeOtherCVar")
-    T.eq(Stub.PendingTimers(), 0, "别的 CVar 不该排定时器")
+    T.eq(PendingNonTicker(), 0, "别的 CVar 不该排定时器")
     T.isNil(Core.lastReason)
 
     Stub.FireEvent("CVAR_UPDATE", CVar.NAME)
-    T.eq(Stub.PendingTimers(), 1)
+    T.eq(PendingNonTicker(), 1)
     T.isNil(Core.lastReason, "不是立刻刷新（去抖）")
     Stub.Advance(0.6)
     T.eq(Core.lastReason, "cvar-update")
@@ -1051,12 +1099,13 @@ T.test("暖机: 延迟未知时按计划重试，拿到延迟后停止重试", f
     Stub.ClearWrites()
     Stub.Advance(11) -- 2s / 5s / 10s 三次重试，都还没拿到延迟
     T.eq(#Stub.writes, 0, "目标没变就不写")
-    T.eq(Stub.PendingTimers(), 1, "延迟未知时应继续排下一次重试")
+    T.eq(PendingNonTicker(), 1, "延迟未知时应继续排下一次重试")
 
     Stub.worldLatency = 300
     Stub.Advance(10) -- 命中 20s 那一步
     T.eq(Stub.CVarValue(), "350", "重试必须使用刚拿到的延迟")
-    T.eq(Stub.PendingTimers(), 0, "拿到延迟后不再重试")
+    T.eq(PendingNonTicker(), 0, "拿到延迟后不再重试")
+    T.notNil(Core.ticker, "启用状态下周期刷新继续存在（与暖机重试是两件事）")
 end)
 
 ------------------------------------------------------------------------------

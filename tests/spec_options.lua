@@ -154,6 +154,15 @@ local function FindButtonByText(text)
     end)
 end
 
+--- Any font string whose rendered text contains `needle` (plain find, no patterns).
+local function FindFontStringContaining(needle)
+    if type(needle) ~= "string" or needle == "" then return nil end
+    return Stub.FindWidget(function(widget)
+        return widget.__kind == "FontString" and type(widget.text) == "string"
+            and string.find(widget.text, needle, 1, true) ~= nil
+    end)
+end
+
 local function Click(widget)
     T.notNil(widget, "控件不存在，无法点击")
     local handler = widget.__scripts and widget.__scripts.OnClick
@@ -601,6 +610,28 @@ T.test("状态条拖动：落点写回 statusBarPos（noRefresh），并夹紧�
     T.eq(clamped.y, -(Stub.screenHeight - bar:GetHeight()), "上边越界应夹在屏幕内")
 end)
 
+T.test("修复: 状态条几何返回 NaN 时不得写出 NaN 坐标，更不得抛错", function()
+    Boot()
+    resetWorld({ showStatus = true, statusBarPos = nil })
+    Options.Refresh()
+
+    local bar = StatusBar()
+    bar:SetSize(100, 30)
+    bar:Show()
+    local dragStop = bar.__scripts.OnDragStop
+    T.notNil(dragStop, "拖动结束必须保存位置")
+
+    -- 极端情况下客户端可能给出 NaN 几何；SetPoint 会原样收下。
+    bar:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0 / 0, 0 / 0)
+    local ok, err = pcall(dragStop, bar)
+    T.truthy(ok, "拖动保存不得抛错（实得：" .. tostring(err) .. "）")
+
+    local pos = Core.GetConfig().statusBarPos
+    T.notNil(pos, "仍应写回一个坐标")
+    T.eq(pos.x, pos.x, "x 必须是有限数字，不能是 NaN")
+    T.eq(pos.y, pos.y, "y 必须是有限数字，不能是 NaN")
+end)
+
 T.test("状态条位置：下次登录按 statusBarPos 还原，解锁后回到默认锚点", function()
     Boot()
     resetWorld({ showStatus = true, statusBarPos = { x = 120, y = -240 } })
@@ -670,6 +701,25 @@ T.test("斜杠 /asq：打开设置页（走 Settings 分类）", function()
     T.falsy(ok, "无法打开面板时必须返回 false")
 end)
 
+T.test("修复: 上限低于 50ms 时必须给出警告（否则等于悄悄关掉施法队列）", function()
+    Boot()
+    resetWorld({ maxWindow = 400 })
+    Options.Refresh()
+    T.isNil(FindFontStringContaining(Core.L("HINT_MAX_TOO_LOW")), "正常上限不该出现警告")
+
+    -- Sanitize 自己挡住了最常见的那条路：只调低上限、下限还是默认 50 → min>max
+    -- → 两值双双复位，所以配置根本进不到公式里。
+    resetWorld({ maxWindow = 30 })
+    T.eq(Core.GetConfig().maxWindow, 400, "只调低上限会被 Sanitize 复位（min>max）")
+
+    -- 真正够得着的情况：上下限都低于 50ms（手改存档或旧配置）。
+    resetWorld({ minWindow = 10, maxWindow = 30 })
+    Options.Refresh()
+    T.eq(Core.GetConfig().maxWindow, 30, "一致的低区间应当被接受（不静默改写用户配置）")
+    T.notNil(FindFontStringContaining(Core.L("HINT_MAX_TOO_LOW")),
+        "上限 30ms 会让预输入时间几乎消失，必须警告而不是照做")
+end)
+
 T.test("斜杠 /asq status：输出诊断行（含状态、公式、CVar 信息）", function()
     Boot()
     resetWorld({ enabled = true })
@@ -688,6 +738,29 @@ T.test("斜杠 /asq status：输出诊断行（含状态、公式、CVar 信息�
     Stub.chat = {}
     SlashCmdList["AUTOSPELLQUEUE"]("diag")
     T.truthy(#Stub.chat >= 15, "diag 是 status 的别名")
+end)
+
+T.test("修复: 诊断里的「当前值」必须是实时读，且标注采样时间", function()
+    Boot()
+    resetWorld({ enabled = true })
+    Stub.SetCVarValue(150)
+    Core.Refresh("slash-status") -- 快照里 current = 150
+
+    Stub.SetCVarValue(300) -- 外部改动，核心还没刷新：live=300 / current=150
+    Stub.chat = {}
+    SlashCmdList["AUTOSPELLQUEUE"]("status")
+
+    local currentLine
+    for _, line in ipairs(Stub.chat) do
+        if string.find(line, Core.L("LABEL_CURRENT"), 1, true) then currentLine = line end
+    end
+    T.notNil(currentLine, "诊断必须含当前值行")
+    T.contains(currentLine, ExpectedMs(300),
+        "当前值必须是实时读到的 300（快照里仍是 150），否则报 bug 时会误导")
+
+    local agePrefix = string.match(Core.L("HINT_SNAPSHOT_AGE"), "^(.-)%%d")
+    T.truthy(agePrefix and Stub.ChatContains(agePrefix),
+        "目标值/延迟是采样值，诊断必须标注采样时间")
 end)
 
 T.test("斜杠 /asq reset：恢复默认设置并反馈", function()

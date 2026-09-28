@@ -15,7 +15,7 @@
 | 版本 | 2.0.0（`.toc` 的 `## Version` 是唯一权威） |
 | 仓库 | `https://github.com/tatechen88/AutoSpellQueue`（2026-09-28 由 `Tate_ASQ` 改名，改名前需先解归档） |
 | 分支状态 | `main` 与 origin 同步，工作区干净 |
-| 本地门禁 | 语法（12 文件）→ 单测（128 用例 / 1206 断言）→ 结构/版本 → 打包，全绿 |
+| 本地门禁 | 语法 → 单测 → 结构/版本 → 打包，全绿（数量随版本变化，见当次 `pwsh tools/verify.ps1` 输出） |
 | 本机安装 | 已装入 `D:\Game\World of Warcraft\_retail_\Interface\AddOns\AutoSpellQueue`（6 文件，与仓库逐文件哈希一致） |
 | 旧插件 | 已移出扫描路径 → `Interface\AddOns.disabled\Tate_ASQ`（备份，可删） |
 | 旧存档 | 已复制为 `WTF\Account\671932030#1\SavedVariables\AutoSpellQueue.lua`，原文件存为 `Tate_ASQ.lua.pre-v2.bak` |
