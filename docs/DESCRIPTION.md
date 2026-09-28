@@ -19,11 +19,12 @@
 
 装上一个插件，把你游戏里那个藏起来的「施法队列窗口」自动调成适合你专精和网速的值。你不用管它。
 
-## 「施法队列窗口」到底是什么
+## 「施法容限」到底是什么（英文客户端叫施法队列窗口 / Spell Queue Window）
 
 老玩家都经历过这个瞬间：读条快结束了，你按了下一个技能，游戏「记住」了这次按键，读条一结束立刻接上。
 
-这个缓冲区就叫**施法队列**；`SpellQueueWindow` 是它的长度，单位毫秒，含义是：
+这个缓冲区就叫**施法队列**；`SpellQueueWindow` 是它的长度（中文客户端里这个选项就叫**施法容限**），
+单位毫秒，含义是：
 
 > **在当前读条 / GCD 结束前多少毫秒按下的键，还算数。**
 
@@ -74,13 +75,20 @@
 ## 装完怎么确认它在工作
 
 - `/dump GetCVar("SpellQueueWindow")` —— 看当前值
-- `/asq` —— 打开面板，直接告诉你：当前值、目标值、延迟、场景，以及**这个值是怎么算出来的**
-- `/asq status` —— 在聊天框打一份诊断（含算法当前的余量、抖动、写入次数）
+- `/asq` —— 打开面板。面板上只有一行状态（如 `已应用 · 220 ms`），**把鼠标移到那一行上**，
+  它才展开告诉你：目标值、延迟、场景、以及**这个值是怎么算出来的**（不打扰不想看的人）
+- `/asq status` —— 在聊天框打一份诊断（含算法当前的余量、抖动、采样策略、写入次数）
 - 悬浮小条显示实时值，可以拖到顺手的位置；**左键点开面板**
 
-**面板里只有两个开关**：总开关，和「要不要显示悬浮读数」。
-安全余量、写入阈值、延迟来源、窗口上下限都是插件按你的实测网络自己决定的——这些数字玩家猜不准，
-插件每 15 秒就能测一次，所以它们不该变成你要操心的选项。
+**面板里只有两个复选框**：总开关，和「要不要显示悬浮读数」，外加一个「重置位置」按钮（那是动作，不是参数）。
+安全余量、写入阈值、延迟来源、窗口上下限、多久检测一次，全部由插件按你的实测网络自己决定——
+这些数字玩家猜不准，插件测一辈子也比你猜得准，所以它们不该变成你要操心的选项。
+
+**它会自己安静下来**：登录、换区、进副本或团本时采样一小段，读数稳定后就**不再反复测**，
+之后每 5 分钟只做一次廉价的漂移检查（真的漂移了才重新采样）。学到的延迟会记住，下次登录立刻就是正确值。
+
+**屏幕上的数字会说话**：延迟正常时是白色（连边框一起白），明显高于你平时的水平就变红，
+一眼就能看出网络好不好。失败 / 等待脱战 / 关闭用各自的状态色。悬停会写明「为什么是红的」。
 
 ## 它不是什么（这段请认真看）
 
@@ -105,7 +113,9 @@
 会——它们抢同一个 CVar。**只装一个。**
 
 **延迟变化多久生效？**
-插件每 15 秒重算一次；客户端自己的延迟读数大约 30 秒刷新一次，所以最坏情况滞后几十秒。
+登录、换区、进副本或团本时它立刻重测；读数稳定后它不再反复测，之后每 5 分钟做一次漂移检查，
+真漂移了（超过 25ms）马上重新采样。客户端自己的延迟读数大约 30 秒刷新一次，所以你看到的数字
+最多滞后几十秒——够用，而且不再有固定节奏的轮询。
 
 **为什么我关了插件，值就变回去了？**
 因为它认为那个值是你的，不是它的。
@@ -134,11 +144,12 @@
 
 Install it, forget it. It keeps the game's hidden "spell queue window" set to a value that fits your spec and your ping.
 
-## What the spell queue window actually is
+## What the spell queue window actually is (「施法容限」 on a Chinese client)
 
 You've felt it: you press your next ability as the cast bar is almost done, the game remembers the press, and the next spell fires the instant the cast ends.
 
-That buffer is the **spell queue**, and `SpellQueueWindow` is its length in milliseconds:
+That buffer is the **spell queue**, and `SpellQueueWindow` is its length in milliseconds - the option a Chinese
+client calls **施法容限**:
 
 > **How early a keypress still counts, before the current cast / GCD ends.**
 
@@ -188,14 +199,25 @@ Honest version: this is **not** an "install it and your DPS goes up" addon. It t
 ## How to confirm it works
 
 - `/dump GetCVar("SpellQueueWindow")` — the current value
-- `/asq` — the panel shows current value, target, latency, context, and **how the number was derived**
-- `/asq status` — a diagnostic dump into chat (including the headroom and jitter the algorithm is using right now)
+- `/asq` — opens the panel, which shows one status line (e.g. `Applied · 220 ms`); **hover that line** and it
+  unfolds the details: target, latency, context and **how the number was derived** (invisible to anyone who
+  does not care)
+- `/asq status` — a diagnostic dump into chat (headroom, jitter, sampling policy and write count)
 - The floating bar shows the live value — drag it where you want, **left-click opens the panel**
 
-**There are exactly two switches**: on/off, and whether the floating readout is drawn.
-Safety headroom, the write threshold, the latency source and the window limits are all decided by the addon from
-what it measures every 15 seconds — you cannot guess those numbers better than it can measure them, so they are
-not your problem to manage.
+**There are exactly two checkboxes**: on/off, and whether the floating readout is drawn, plus a "reset
+position" button (an action, not a setting). Safety headroom, the write threshold, the latency source, the
+window limits and how often to probe are all decided by the addon from what it measures — you cannot guess
+those numbers better than it can measure them, so they are not your problem to manage.
+
+**It goes quiet on its own**: it samples briefly on login, on zone changes and when you enter a dungeon or
+raid, then **stops re-measuring** once the reading settles — after that it only runs one cheap drift check
+every 5 minutes (and re-samples only if latency really moved). The learned latency is remembered, so the next
+login starts at the right value.
+
+**The number on screen talks**: white while your latency is what this machine normally sees (border included),
+red once it is clearly worse than usual, so the connection state is readable at a glance. Failure / waiting
+for combat / disabled keep their own state colour. Hovering spells out **why** it is red.
 
 ## What it is NOT (please read this part)
 
@@ -220,7 +242,10 @@ That part is deliberate:
 Yes — they fight over the same CVar. **Install one.**
 
 **How fast does it react?**
-It re-evaluates every 15 s; the client's own latency reading refreshes roughly every 30 s, so worst case you're a few tens of seconds behind.
+It re-measures immediately on login, on zone changes and when you enter a dungeon or raid. Once the reading
+settles it stops re-measuring and only runs one drift check every 5 minutes, re-sampling at once if latency
+really moved (more than 25 ms). The client's own latency reading refreshes roughly every 30 s, so worst case
+you are a few tens of seconds behind — good enough, and without a fixed polling loop.
 
 **Why does my value change back when I disable it?**
 Because that value is yours, and it knows it.
@@ -244,11 +269,11 @@ It does the number you couldn't be bothered to compute, then shuts up about it.
 
 **zhCN**
 
-> 自动把施法队列窗口（`SpellQueueWindow`）调整到适合你专精与网络延迟的值，并在它不再管理时归还你自己原来的值。只修改本地客户端设置，不自动施法、不联网、无遥测。
+> 自动把「施法容限」（`SpellQueueWindow`）调整到适合你专精与网络延迟（含抖动）的值，并在它不再管理时归还你自己原来的值。**装上即用，面板里只有两个复选框**；屏幕上的数字白色=网络正常、红色=明显偏高。只修改本地客户端设置，不自动施法、不联网、无遥测。
 
 **en**
 
-> Keeps your spell queue window (`SpellQueueWindow`) tuned to your spec and latency, and puts your own value back when it stops managing it. It only changes a local client setting — no automation, no network access, no telemetry.
+> Keeps your spell queue window (`SpellQueueWindow`) tuned to your spec, latency **and its jitter**, and puts your own value back when it stops managing it. **Two checkboxes and you are done**; the number on screen is white when your connection is normal and red when it is clearly worse. It only changes a local client setting - no automation, no network access, no telemetry.
 
 ---
 
