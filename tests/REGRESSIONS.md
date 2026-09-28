@@ -30,11 +30,30 @@
 | 3 | `CVar:Info()` 的 `GetCVarInfo` 回退分支把**字符串**写进 `info.value`（主分支有 `tonumber`） | `getCVarInfo` 抛错、`getCVar` 返回 `"275"` 时 `type(CVar:Read()) == "string"` | 违反 `Read() -> number\|nil`；`("%d"):format(current)` 在 Lua 5.3 直接报错 | `spec_cvar` `Info()/Read() 的回退路径必须返回 number（文档契约）` |
 | 4 | `Execute()` 只在 `kind == "none"` 时记 `externalChange`，重新夺回管理时诊断丢失 | 写 350 → 外部改 333 → `Refresh()` 后 `externalChange == false` | UI 无法如实告知「值被别人改过」 | `spec_core` `外部改值后重新夺回管理时 externalChange 诊断不应丢失` |
 | 5 | `Formula.Clamp(NaN, lo, hi)` 返回 NaN，与注释「never returns NaN」矛盾 | `Formula.Clamp(0/0, 50, 400) == NaN` | Options 夹用户输入时得到 NaN | `spec_formula` `Clamp(NaN) 的结果必须是有限数字…` |
+| 6 | **UI 把「战斗中禁用」显示成「已关闭」**：`ResolveState` 在 `enabled=false` 时把 `pending` 一并压成 `disabled`，而文档承诺「战斗中关插件会显示等待脱战」 | 状态条喂 `{enabled=false, state="pending", live=245}` → 显示「已关闭」而非数字 | 玩家以为值已被还回去；文档与 UI 矛盾 | `spec_options` `状态卡：六种状态…` 的 `disabled+pending (combat)` 夹具、`状态条：…` 的关闭中等待脱战断言 |
+
+> 第 6 条的教训（覆盖盲区）：`spec_options` 的状态用例喂的是**已解析好的**状态表
+> （每行自带 `state = "…"`），所以 `ResolveState` 的**组合逻辑**（`enabled × state`）
+> 从未被覆盖。教训：对「把一种状态映射成另一种状态」的函数，测试必须喂**原始组合**，
+> 不能喂别人替它算好的结果。已补的组合用例就是为此。
 
 此外，「旧代码把 `pcall` 没抛错当成写成功」这一类行为，由 `spec_cvar` / `spec_core` 的多条 `P1:` 用例永久锁定，
 其中包含「API 谎报 true 但值没变」「客户端读不回 + API 返回 nil」等变体——**不要再用「API 没报错就算成功」的写法**。
 
-> 根因提醒：这 5 个缺陷全是「代码与文档/注释说的不一致」而不是崩溃。写完一句承诺，就配一条用例。
+> 根因提醒：这 6 个缺陷全是「代码与文档/注释说的不一致」而不是崩溃。写完一句承诺，就配一条用例。
+
+## 2a. 深度审查（2026-09-28，GLM 模型）遗留的建议 —— 已确认、暂不修
+
+以下问题**已确认存在**，但属于设计权衡或极低概率路径，修复收益小于改动风险，先记录在此：
+
+| 级别 | 问题 | 说明与建议 |
+|---|---|---|
+| P3 | `minWindow`/`maxWindow` 可被设为 0，把一切目标 clamp 成 0 | UI 步进允许 0–400；`min=0/max=0` 合法且 `min≤max`，于是插件会主动写 `SpellQueueWindow=0`（等于整个施法队列被关掉）且无警告。建议：把两条步进的下限提到 50，或在 `maxWindow < 50` 时于提示行加警告文案 |
+| P3 | 禁用后「归还失败」的重试依赖事件 | `SetEnabled(false)` 会停掉 15 秒 ticker；若归还写失败（非战斗原因），重试只发生在下一次 zone / spec / PEW / 脱战事件。错误会进聊天与面板（不静默），但玩家原地不动时归还会停摆到下次换图。建议：`ownership` 仍活跃时保持 ticker |
+| P4 | `Options.Clamp` 缺 NaN 防护 | `Formula.Clamp` 已修过同类问题，Options 里的私有副本没同步；当前所有调用点都传有限数字，不可达 |
+| P4 | `CVar.SameValue` 对「非数字字符串」会抛错 | `tonumber` 得 nil 后直接 `math.floor(nil)`；当前全部调用点都有护栏，属潜在脆弱 |
+| P4 | `Core.timers = {}` 是死字段 | 从未被读写，可删 |
+| P4 | `/asq status` 的「当前值」用快照而非实时读 | 面板卡片用 `live`，诊断输出用 `status.current` 且未标采样时间；两边口径不一致 |
 
 ## 3. 打包可复现性（踩过的坑）
 

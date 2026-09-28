@@ -406,6 +406,13 @@ local STATE_CASES = {
         live = 245, number = 245, extra = { inCombat = true },
     },
     {
+        -- Regression: disabling in combat defers the restore, so the panel and
+        -- the bar must show "waiting" - not a plain "off". The docs promise it.
+        name = "disabled+pending (combat)", state = "pending", label = "STATE_PENDING",
+        hint = "HINT_PENDING", live = 245, number = 245,
+        extra = { enabled = false, owned = true, baseline = 150, inCombat = true },
+    },
+    {
         name = "disabled", state = "disabled", label = "STATE_DISABLED", hint = "HINT_DISABLED",
         live = 150, number = 150, extra = { enabled = false, owned = false, baseline = nil },
     },
@@ -515,6 +522,11 @@ T.test("状态条：error / unavailable / disabled 只显示状态名，绝不�
     T.eq(BarTextFor({ state = "unavailable", live = nil, nilKeys = { "live" } }),
         Core.L("STATE_UNAVAILABLE"))
     T.eq(BarTextFor({ enabled = false, state = "disabled", live = 150 }), Core.L("STATE_DISABLED"))
+
+    -- 关闭中但战斗未结束：归还被推迟，值仍归插件管，所以显示数字（等待色），
+    -- 绝不能显示成「已关闭」——那会让玩家以为值已经被还回去了。
+    T.eq(BarTextFor({ enabled = false, state = "pending", live = 245 }), ExpectedMs(245),
+        "关闭中等待脱战：状态条显示数字而非「已关闭」")
 
     T.eq(BarTextFor({ state = "applied", live = 245 }), ExpectedMs(245), "正常状态才显示数字")
     -- 完全读不到值：连快照都是空的，才允许说 unavailable

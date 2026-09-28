@@ -117,10 +117,14 @@ local function SpecText(status)
 end
 
 --- The state that should be shown. A failed write always wins over "disabled",
---- because that failure is the thing the player has to know about.
+--- because that failure is the thing the player has to know about. A pending
+--- action also survives: disabling in combat defers the restore until combat
+--- ends, and the player must see "waiting" rather than a plain "off" - the
+--- docs promise exactly that.
 local function ResolveState(status)
     local state = status.state or "idle"
-    if state ~= "error" and state ~= "unavailable" and not status.enabled then
+    if state ~= "error" and state ~= "unavailable" and state ~= "pending"
+        and not status.enabled then
         state = "disabled"
     end
     return state
