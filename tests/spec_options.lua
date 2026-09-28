@@ -701,6 +701,17 @@ T.test("斜杠 /asq：打开设置页（走 Settings 分类）", function()
     T.falsy(ok, "无法打开面板时必须返回 false")
 end)
 
+T.test("修复: 状态条字体串必须自带字体（客户端对无字体 FontString 调 SetText 会报错）", function()
+    Boot()
+    local bar = StatusBar()
+    T.notNil(bar, "状态条必须建起来（构建失败会发生在这里）")
+    local label = bar._text
+    T.notNil(label, "状态条必须有文字对象")
+    T.truthy(label.font ~= nil or label.fontObject ~= nil,
+        "字体串必须已绑定字体；否则客户端会抛 FontString:SetText(): Font not set")
+    T.truthy(type(label.text) == "string" and #label.text > 0, "应当已写入初始文本")
+end)
+
 T.test("修复: 上限低于 50ms 时必须给出警告（否则等于悄悄关掉施法队列）", function()
     Boot()
     resetWorld({ maxWindow = 400 })

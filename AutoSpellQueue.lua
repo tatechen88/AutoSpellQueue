@@ -934,7 +934,12 @@ function Core.Init()
     if eventFrame or not CreateFrame then return end
     eventFrame = CreateFrame("Frame")
     for event in pairs(HANDLERS) do
-        eventFrame:RegisterEvent(event)
+        -- One bad event name must not stop the others from being registered,
+        -- and must not abort the rest of this file.
+        local ok, err = pcall(eventFrame.RegisterEvent, eventFrame, event)
+        if not ok and type(print) == "function" then
+            print("AutoSpellQueue: cannot register event " .. tostring(event) .. ": " .. tostring(err))
+        end
     end
     eventFrame:SetScript("OnEvent", OnEvent)
     Core.eventFrame = eventFrame

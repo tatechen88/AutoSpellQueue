@@ -695,7 +695,11 @@ local function CreateStatusBar()
     SetColor(bg, 0.02, 0.03, 0.04, 0.88)
     AddBorder(bar, ACCENT[1], ACCENT[2], ACCENT[3], 0.55)
 
-    local label = bar:CreateFontString(nil, "OVERLAY")
+    -- A font object must be given here: the client raises
+    -- "FontString:SetText(): Font not set" if SetText runs before any font is
+    -- set, and that error used to abort the whole UI setup. ApplyStatusBarStyle
+    -- replaces this font with the player's choice later.
+    local label = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("CENTER")
     label:SetText(L("VALUE_PLACEHOLDER"))
     bar._text = label
@@ -1489,27 +1493,52 @@ end
 -------------------------------------------------------------------------------
 local initialized = false
 
+--- Runs one setup step in isolation.
+--  A single broken surface must never take the rest of the UI down with it -
+--  that is exactly how a font error once left the player with no panel, no bar
+--  and no message. Failures are reported in chat instead of vanishing.
+local function TryStep(stepName, fn)
+    local ok, err = pcall(fn)
+    if not ok then
+        Say(Format("MSG_UI_STEP_FAILED", stepName, tostring(err)))
+        if type(print) == "function" then
+            print("AutoSpellQueue: UI step '" .. tostring(stepName) .. "' failed: " .. tostring(err))
+        end
+    end
+    return ok
+end
+
 local function Setup()
     if initialized then return end
     initialized = true
-    PullState()
-    RegisterSlashCommands()
-    CreateStatusBar()
-    ApplyStatusBarVisibility()
-    if not TryCreateSettingsCategory() then
-        CreateStandaloneWindow()
+    TryStep("state", PullState)
+    TryStep("slash", RegisterSlashCommands)
+
+    -- Panel first: it is the surface players go looking for, so it must not
+    -- depend on the status bar being constructible.
+    if not TryStep("panel", TryCreateSettingsCategory) then
+        TryStep("standalone", CreateStandaloneWindow)
     end
+
+    TryStep("statusbar", function()
+        CreateStatusBar()
+        ApplyStatusBarVisibility()
+    end)
 end
 
 local events = CreateFrame("Frame")
-events:RegisterEvent("ADDON_LOADED")
-events:RegisterEvent("PLAYER_LOGIN")
-events:RegisterEvent("PLAYER_ENTERING_WORLD")
-events:RegisterEvent("PLAYER_REGEN_ENABLED")
-events:RegisterEvent("PLAYER_REGEN_DISABLED")
-events:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
-events:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-events:RegisterEvent("CVAR_UPDATE")
+for _, event in ipairs({
+    "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD",
+    "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED",
+    "PLAYER_SPECIALIZATION_CHANGED", "ZONE_CHANGED_NEW_AREA", "CVAR_UPDATE",
+}) do
+    -- One bad event name must not stop the others (and must not abort the file
+    -- before the Options table below is exported).
+    local ok, err = pcall(events.RegisterEvent, events, event)
+    if not ok and type(print) == "function" then
+        print("AutoSpellQueue: cannot register event " .. event .. ": " .. tostring(err))
+    end
+end
 
 events:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then

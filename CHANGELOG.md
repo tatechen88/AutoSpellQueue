@@ -31,6 +31,7 @@
 6. **UI 精简与诚实化** —— 见上；另外面板不可见时不再刷新，控件树只构建一次。
 7. **新增本地验证门禁与可复现打包** —— 语法检查、单元测试、结构与版本一致性检查、打包内容校验，一条命令跑完（数量会随版本变化，跑 `pwsh tools/verify.ps1` 看当次输出）。
 8. **第二轮逐行审查的收尾修复** —— 关掉插件后若归还被战斗推迟或写失败，15 秒定时器继续重试（不再依赖下次换图）；上限低于 50ms 时面板给出警告；状态条几何异常时不再抛错、也不会把 NaN 写进存档；`/asq status` 的「当前值」改为实时读取并标注采样时间。
+9. **修复「进入游戏后界面完全没有任何显示」** —— 状态条的字体串创建时未绑定字体，客户端在 `SetText` 时抛 `FontString:SetText(): Font not set`，而这个错误发生在界面初始化流程里，导致状态条与设置面板一起没被建出来。现在字体串自带字体，并且**每个界面部件独立初始化**：任何一个部件失败都会在聊天框报出部件名与原因，且不再影响其它部件（设置面板优先注册）。测试桩同步加严，按客户端规则模拟「无字体不得 SetText」，杜绝同类问题再次漏网。
 
 #### 升级须知（破坏性变更）
 
@@ -68,6 +69,7 @@
 6. **Leaner, honest UI** — see above; the panel no longer refreshes while hidden, and the widget tree is built once.
 7. **New local verification gate + reproducible packaging** — syntax check, unit tests, structure and version consistency, package content validation, in one command (counts change per release; run `pwsh tools/verify.ps1` for the current numbers).
 8. **Follow-up fixes from a line-by-line review** — if the restore is deferred by combat or the write fails, the 15 s timer keeps retrying instead of waiting for the next zone change; the panel warns when the cap is below 50 ms; broken status-bar geometry no longer raises or stores NaN; `/asq status` now prints the live value and labels the sample age.
+9. **Fixed "nothing at all shows up in game"** — the status bar's font string had no font bound, so the client raised `FontString:SetText(): Font not set` during UI setup, which took both the status bar and the settings panel down with it. The string now carries a font, and **every UI part initialises independently**: a failure names the part and the reason in chat and no longer blocks the rest (the settings panel is registered first). The test double now models the client rule ("no font ⇒ SetText fails") so this class of bug cannot slip through again.
 
 #### Upgrading (breaking changes)
 

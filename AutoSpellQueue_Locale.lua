@@ -362,6 +362,11 @@ local STRINGS = {
         "打不開設定面板；可以先用 /asq status 查看診斷。",
         "The settings panel could not be opened; try /asq status for diagnostics.",
     },
+    ["MSG_UI_STEP_FAILED"] = {
+        "界面组件「%s」初始化失败：%s。其余功能仍可用，请把这条报给作者。",
+        "介面元件「%s」初始化失敗：%s。其餘功能仍可用，請把這條回報給作者。",
+        "UI part \"%s\" failed to initialise: %s. Everything else still works - please report this line.",
+    },
 
     ---------------------------------------------------------------------------
     --  Values / units

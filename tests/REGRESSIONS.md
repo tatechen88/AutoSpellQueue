@@ -37,6 +37,17 @@
 | 10 | **`CVar.SameValue` 对非数字抛错**：`tonumber` 得 nil 后直接 `math.floor(nil)` | `CVar.SameValue("abc", 200)` → error | 潜在脆弱：任何脏值流到这里都会炸掉刷新链 | `spec_cvar` `SameValue…` 的非数字/NaN/inf 断言 |
 | 11 | **诊断输出的「当前值」用的是快照**：面板用 `live`，`/asq status` 用 `status.current`，报 bug 时会误导 | 快照 150 / 实际 300 时 `/asq status` 打印 150 | 玩家按诊断报 bug，拿到的是过期数字 | `spec_options` `修复: 诊断里的「当前值」必须是实时读，且标注采样时间` |
 | 12 | `Core.timers = {}` 死字段 | 从未被读写 | 无害噪音 | 无（删除即可；`grep -n "Core.timers" 应为空`） |
+| 13 | **进游戏后界面完全没有任何显示**（真机实测暴露）：状态条字体串用 `CreateFontString(nil,"OVERLAY")` 创建（无字体）后调 `SetText` → 客户端抛 `FontString:SetText(): Font not set` → 该错误位于 `Setup()` 内 → **状态条中断、设置面板的注册代码根本没执行** | 客户端日志 `General.log`：`Lua Error: FontString:SetText(): Font not set — AutoSpellQueue_Options.lua:700 ← :681 ← :1497 ← :1517` | 玩家看不到任何界面，且没有任何提示（最糟的失败形态） | `spec_options` `修复: 状态条字体串必须自带字体…`；**并把测试桩加严**（见下） |
+
+> 第 13 条的教训（测试无法证明客户端行为）：`wow_stub.CreateFontString` 之前**不校验字体前提**，
+> 所以「创建字体串 → SetText」这条客户端硬约束在测试里畅通无阻。桩现在按客户端建模：
+> `CreateFontString` 的 `inherits` 必须是已知字体对象（否则报 `Unknown font object`），
+> 而**没有字体就调 `SetText` 会抛与客户端完全相同的那句话**。
+> 实测：把那一行还原 → 10 条用例 FAIL；恢复 → 全绿。
+>
+> 同时给 `Setup()` 加了隔离：每个部件在 `pcall` 里初始化、失败会**在聊天框报出部件名与原因**，
+> 且**先注册设置面板再建状态条**——一个部件挂掉不再可能导致「什么都没有」。
+> （诚实声明：`TryStep` 的隔离逻辑本身没有注入式失败用例，属防御性代码。）
 
 > 根因提醒：这些缺陷几乎全是「代码与文档/注释说的不一致」而不是崩溃。写完一句承诺，就配一条用例。
 >

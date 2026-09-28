@@ -139,8 +139,15 @@ T.test("UI/Core 源码里出现的每个本地化键都必须在 enUS 里", func
         "AutoSpellQueue_Formula.lua", "AutoSpellQueue_CVar.lua",
     }
 
-    -- 事件名（RegisterEvent 的参数）与键名长得很像（CVAR_UPDATE），先收集起来排除。
-    local notKeys = {}
+    -- 事件名与键名长得很像（CVAR_UPDATE 撞上 CVAR_ 前缀），必须排除。
+    -- 下面的正则只看得到 `RegisterEvent("X")` 字面量形式；代码改成「事件名列表
+    -- + pcall 注册」之后就扫不到了，所以这里把本插件注册的事件名补全。
+    local notKeys = {
+        ADDON_LOADED = true, PLAYER_LOGIN = true, PLAYER_ENTERING_WORLD = true,
+        PLAYER_SPECIALIZATION_CHANGED = true, ZONE_CHANGED_NEW_AREA = true,
+        ZONE_CHANGED = true, PLAYER_REGEN_ENABLED = true, PLAYER_REGEN_DISABLED = true,
+        CVAR_UPDATE = true, PLAYER_LOGOUT = true,
+    }
     for _, file in ipairs(files) do
         local source = sources[file] or ""
         for event in source:gmatch('RegisterEvent%("([A-Z0-9_]+)"') do

@@ -40,6 +40,24 @@ _G.AutoSpellQueueStub = Stub
 
 Stub.DEFAULT_CVAR = "SpellQueueWindow"
 
+--- Font objects the client always provides (SharedXML/FontStyles.lua). Used to
+--- model CreateFontString's `inherits` argument: an unknown name errors in the
+--- client, and a missing font makes FontString:SetText fail at runtime.
+local FONT_OBJECTS = {
+    GameFontNormal = true, GameFontNormalSmall = true, GameFontNormalLarge = true,
+    GameFontNormalHuge = true, GameFontNormalMed1 = true, GameFontNormalMed2 = true,
+    GameFontNormalMed3 = true,
+    GameFontHighlight = true, GameFontHighlightSmall = true, GameFontHighlightLarge = true,
+    GameFontHighlightHuge = true,
+    GameFontDisable = true, GameFontDisableSmall = true, GameFontDisableLarge = true,
+    GameFontRed = true, GameFontRedSmall = true,
+    GameFontGreen = true, GameFontGreenSmall = true,
+    GameFontDarkGraySmall = true, GameFontWhite = true, GameFontBlack = true,
+    GameFontBlackSmall = true, GameFontGreySmall = true,
+    GameFontNormalOutline = true, GameFontHighlightOutline = true,
+}
+Stub.FONT_OBJECTS = FONT_OBJECTS
+
 local function makeCVarEntry(value)
     return {
         value = tostring(value),
@@ -251,9 +269,23 @@ local function newRegion(kind)
     function region:GetCenter()
         return self:GetLeft() + self:GetWidth() / 2, self:GetTop() - self:GetHeight() / 2
     end
-    function region:SetText(text) self.text = text end
+    -- The client refuses to render text on a FontString that has no font yet:
+    --   FontString:SetText(): Font not set
+    -- That error once aborted the whole UI setup in the live client while the
+    -- stub happily accepted it. Model the precondition so the suite catches it.
+    function region:SetText(text)
+        if self.__kind == "FontString" and not (self.font or self.fontObject) then
+            error("FontString:SetText(): Font not set", 2)
+        end
+        self.text = text
+    end
     function region:GetText() return self.text end
-    function region:SetFormattedText(fmt, ...) self.text = string.format(fmt, ...) end
+    function region:SetFormattedText(fmt, ...)
+        if self.__kind == "FontString" and not (self.font or self.fontObject) then
+            error("FontString:SetText(): Font not set", 2)
+        end
+        self.text = string.format(fmt, ...)
+    end
     function region:GetStringWidth()
         local text = type(self.text) == "string" and self.text or ""
         return #text * 7
@@ -332,10 +364,18 @@ local function newFrame(frameType, name, parent)
         texture.parent = self
         return Stub.RegisterFrame(texture)
     end
-    function frame:CreateFontString(name)
+    function frame:CreateFontString(name, layer, inherits)
         local text = newRegion("FontString")
         text.name = name
         text.parent = self
+        -- `inherits` is a font object name in the client; without it the client
+        -- leaves the string fontless and SetText fails (see region:SetText).
+        if inherits ~= nil then
+            if FONT_OBJECTS[inherits] == nil then
+                error("CreateFontString: Unknown font object '" .. tostring(inherits) .. "'", 2)
+            end
+            text.fontObject = inherits
+        end
         return Stub.RegisterFrame(text)
     end
     function frame:SetMovable() end
