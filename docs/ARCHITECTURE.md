@@ -55,21 +55,31 @@
 跨会话记忆：学习结束时把学到的延迟与抖动写入 `latencyCache`，下次登录**先用它**算出正确值，
 不等 `GetNetStats()`；第一笔实测与记忆值相差超过死区时**直接采用实测**（不慢慢滑几分钟）。
 
-### 设置面板：四个元素，多一个都不许
+### 设置面板：StockTake 风格（同一作者、同一客户端）
 
-| 元素 | 内容 |
+面板刻意与姊妹插件 **StockTake**（`D:\AI\Workspaces\WOW\StockTake-dev`；已安装副本的
+`Options.lua` 是参照实现）保持同一套做法与观感，玩家只需要学一次布局：
+
+| 元素 | 做法 |
 |---|---|
-| 标题行 | `AutoSpellQueue` + **总开关**（标题本身就是开关的标签） |
-| 状态行 | 一行：状态名 + 当前值（如 `已应用 · 220 ms`）；失败时只显示状态名，绝不显示数字 |
-| 显示悬浮状态条 | 开关 |
-| 重置位置 | 按钮（动作，不是参数） |
+| 标题 | `GameFontNormalLarge` 直接锚在面板 `TOPLEFT (16, -16)`（与 StockTake 完全相同） |
+| 一行状态 | `GameFontHighlightSmall`，标题下方；**按状态着色**（失败醒目）。StockTake 的同一位置是「命令：…」提示行 |
+| 控件 | **暴雪原生控件，零自绘**：`SettingsCheckboxTemplate`（回退 `InterfaceOptionsCheckButtonTemplate`）、`UIPanelButtonTemplate` |
+| 布局 | 控件直接锚在面板上，x=16，纵向 32–36px 节奏；**没有滚动框**（StockTake 也没有，那类坑随之消失） |
+| 提示 | `AttachTooltip` 用 `SetScript` 接管 `OnEnter/OnLeave`（覆盖模板的 DefaultTooltipMixin），并隐藏模板的 `HoverBackground` |
 
-**所有解释都在悬停提示里**（状态行、两个开关各有一条）：它做什么、这个数字怎么来的、多久采样一次、
-诊断与 `/asq base` 逃生出入口在哪。玩家反馈「说明太多，普通玩家不需要知道」，所以页面上不写长句。
-有一条用例守着这条线：**面板里任何一行可见文字都不得超过 60 字节**，可见文字不超过 6 行。
+**两条来自 StockTake 源码的实测坑（必须遵守，`tests/wow_stub.lua` 已按此建模）**：
 
-> 实现注意：提示必须挂在**帧**上，不能挂在 FontString 上——字体串在客户端收不到鼠标事件
-> （没有 `HookScript`/`OnEnter`），挂上去会抛错并把整页构建打断（2026-09-28 真机复现）。
+1. `SettingsCheckboxTemplate` **没有文本元素**，对它 `Button:SetText` 会造一个**无锚点**字体串——
+   API 读回正常但屏幕上看不见。所以复选框标签一律**自建 + 带锚点**。
+2. `$parentText` 形式的文本元素**只有控件有全局名时才会被创建**：无名按钮 `SetText` 同样落到
+   看不见的字体串上。所以模板按钮**必须命名**（本插件用 `AutoSpellQueueResetButton`）。
+
+页面上不写长句：任何一行可见文字 ≤ 60 字节、可见行 ≤ 6 行（用例守门）。长解释（做什么、算式、
+采样策略、诊断与 `/asq base` 入口）都在悬停提示里。
+
+> 实现注意：提示必须挂在**帧**上。`FontString` 在客户端收不到鼠标事件，且**没有 `HookScript`**
+> （只有 `SetScript`）——挂错会抛错并打断整页构建（2026-09-28 真机复现）。
 
 ## 4. 取值公式（唯一出处）
 

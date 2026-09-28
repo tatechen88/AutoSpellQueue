@@ -149,10 +149,13 @@ UI 用例直接调用**真实的** `OnClick` / `OnUpdate` / `OnShow` / `OnDragSt
 | 不变量 | 锁定用例 |
 |---|---|
 | 面板只构建一次，之后只刷新、不重建 | `spec_options` `UI 只构建一次…` |
-| **面板极简**：两个开关 + 一行状态 + 一个动作按钮；任何一行可见文字 ≤ 60 字节、可见文字 ≤ 6 行；副标题/脚注不得出现在页面上 | `spec_options` `面板必须极简…`（守门用例） |
+| **面板极简**：两个复选框 + 一行状态 + 一个动作按钮；任何一行可见文字 ≤ 60 字节、可见文字 ≤ 6 行；副标题/脚注不得出现在页面上 | `spec_options` `面板必须极简…`（守门用例） |
+| **StockTake 风格**：用暴雪原生设置模板；复选框标签必须自建且带锚点（不得用 `Button:SetText`——那是无锚点字体串）；不再有自绘开关（`_track`）；面板上不再有滚动框 | `spec_options` `面板必须极简…`、`StockTake 风格：面板直接锚在画布上…`、`StockTake 风格布局…` |
+| 模板按钮必须有**全局名**（否则 `$parentText` 不存在，`SetText` 落到看不见的字体串上） | `spec_options` `Boot…`（按钮文本找得到即证明命名生效）；桩按此建模 |
+| 复选框点击：客户端先翻转勾选状态再触发 `OnClick`（回调里 `GetChecked()` 已是新值） | 桩 `Stub.Click` 建模；`spec_options` `总开关…`、`开关：只有 enabled 与 showStatus…` |
 | 长解释移到悬停提示后**内容不得丢失**（说明、算式、诊断入口都还在提示里） | `spec_options` `状态行：失败原因与算式都在悬停提示里…` |
 | 提示必须挂在**帧**上：字体串在客户端收不到鼠标事件（真机上抛过 `HookScript` nil，整页构建被打断） | `spec_options` `Boot…`（断言 `_G.ASQ_BUILD_ERROR == nil`）+ `状态行：…悬停提示…` |
-| 状态行几何：单行高度、落在标题行下方、显示开关落在它下方 | `spec_options` `极简面板的布局…` |
+| 状态/控件几何：标题 → 状态行 → 两个复选框 → 按钮逐层向下；控件左边界统一 x=16（与 StockTake 一致） | `spec_options` `StockTake 风格布局…` |
 | **玩家可见设置恰好两个**（enabled / showStatus），面板里只有两个开关，v1 旋钮一个不剩 | `spec_options` `面板必须极简…`（守门用例）、`开关：只有 enabled 与 showStatus…` |
 | v1 的旋钮不会靠任何代码路径复活（SetConfig 拒绝退休键，旧存档被 Sanitize 清掉） | `spec_core` `SetConfig…`、`Sanitize: 错类型与越界…`；`spec_options` `面板不再暴露任何可调参数…` |
 | 配置白名单：新增任何配置键都必须经过审阅 | `spec_core` `结构: 配置白名单…` |

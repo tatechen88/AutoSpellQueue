@@ -387,6 +387,23 @@ local function newFrame(frameType, name, parent)
     function frame:IsEventRegistered(event) return self.__events[event] and true or false end
     function frame:SetScript(handler, fn) self.__scripts[handler] = fn end
     function frame:GetScript(handler) return self.__scripts[handler] end
+    --- Text on a Button/CheckButton.
+    --  The client creates a FontString when the template has no text element, and
+    --  that FontString has NO anchors: API read-back passes while nothing is
+    --  visible. Modelled here (flagged as __unanchored) because it is a real trap
+    --  that hit StockTake and would silently produce unlabelled checkboxes.
+    function frame:SetText(text)
+        if not self.Text then
+            self.Text = Stub.RegisterFrame(newRegion("FontString"))
+            self.Text.parent = self
+            self.Text.fontObject = "GameFontHighlight"
+            self.Text.__unanchored = true
+        end
+        self.Text:SetText(text)
+    end
+    function frame:GetText() return self.Text and self.Text.text end
+    function frame:SetChecked(checked) self.checked = checked and true or false end
+    function frame:GetChecked() return self.checked and true or false end
     function frame:HookScript(handler, fn)
         local previous = self.__scripts[handler]
         self.__scripts[handler] = function(...)
@@ -521,9 +538,63 @@ function Stub.VisibleOnUpdateCount()
     return count
 end
 
-_G.CreateFrame = function(frameType, name, parent)
+-- Template introspection, exactly as the client exposes it. Addons use it to
+-- pick the modern settings templates and fall back on older ones.
+_G.C_XMLUtil = {
+    GetTemplateInfo = function(templateName)
+        if type(templateName) ~= "string" then return nil end
+        if templateName == "SettingsCheckboxTemplate"
+            or templateName == "SettingsSliderTemplate"
+            or templateName == "SettingsCheckboxControlTemplate"
+            or templateName == "UIPanelButtonTemplate"
+            or templateName == "InterfaceOptionsCheckButtonTemplate"
+            or templateName == "OptionsSliderTemplate" then
+            return { name = templateName }
+        end
+        return nil
+    end,
+}
+
+--- Templates the addon asked for, so tests can assert which ones it uses.
+Stub.templates = {}
+
+_G.CreateFrame = function(frameType, name, parent, template)
     local frame = newFrame(frameType, name, parent)
     frame.__name = name
+    frame.__template = template
+    if template then Stub.templates[template] = true end
+
+    -- Model the two template traps StockTake documented in the live client:
+    --   * SettingsCheckboxTemplate has NO text element, so Button:SetText creates
+    --     an unanchored FontString - it reads back fine but is invisible;
+    --   * the older InterfaceOptionsCheckButtonTemplate does ship a `Text` child.
+    if frameType == "CheckButton" then
+        frame.__checkButton = true
+        if template == "InterfaceOptionsCheckButtonTemplate" then
+            frame.Text = Stub.RegisterFrame(newRegion("FontString"))
+            frame.Text.parent = frame
+            frame.Text.fontObject = "GameFontHighlight"
+        else
+            frame.Text = nil
+        end
+    end
+
+    -- Button templates (UIPanelButtonTemplate) provide a `$parentText` child -
+    -- but only when the control has a GLOBAL NAME, because "$parentText" is
+    -- expanded from it. An unnamed template button gets no text element, so
+    -- SetText invents an unanchored FontString and the label is invisible.
+    -- (Both halves of that trap are documented in StockTake's source.)
+    if frameType == "Button" and type(template) == "string" and template ~= "" then
+        if name then
+            local text = newRegion("FontString")
+            text.parent = frame
+            text.fontObject = "GameFontHighlight"
+            text.text = ""
+            frame.Text = text
+            _G[name .. "Text"] = Stub.RegisterFrame(text)
+        end
+    end
+
     if name then _G[name] = frame end
     return Stub.RegisterFrame(frame)
 end
@@ -576,6 +647,22 @@ end
 function _G.GameTooltip:Show() self.shown = true end
 function _G.GameTooltip:Hide() self.shown = false end
 function _G.GameTooltip:IsShown() return self.shown end
+
+--- Simulates a left click the way the client delivers it.
+--  A CheckButton toggles its checked state BEFORE OnClick runs, and addons rely
+--  on exactly that (`self:GetChecked()` inside OnClick). Not modelling the
+--  toggle made a "click the checkbox" test silently pass the old value.
+function Stub.Click(widget)
+    if not widget then return nil end
+    local handler = widget.__scripts and widget.__scripts.OnClick
+    if widget.__checkButton then
+        widget.checked = not (widget.checked and true or false)
+        if handler then handler(widget, "LeftButton", false) end
+        return widget.checked
+    end
+    if handler then return handler(widget, "LeftButton", false) end
+    return nil
+end
 
 --- Test helper: does any tooltip line contain this substring?
 function Stub.TooltipContains(needle)

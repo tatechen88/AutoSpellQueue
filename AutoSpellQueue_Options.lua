@@ -68,9 +68,6 @@ local STATE_COLOR = {
 
 local PANEL_WIDTH = 640
 local PANEL_PAD = 16
-local INNER_WIDTH = PANEL_WIDTH - PANEL_PAD * 2
-local ROW_HEIGHT = 30
-local ROW_GAP = 2
 local POLL_INTERVAL = 0.5
 
 -------------------------------------------------------------------------------
@@ -265,11 +262,14 @@ local function NewText(parent, fontObject)
     return parent:CreateFontString(nil, "OVERLAY", fontObject or "GameFontNormal")
 end
 
---- Tooltip helper. Title/body may be strings or functions (for live text).
---  This is where the panel's explanations live: long text belongs on hover, not
---  on a page a player only opens to flip a switch.
+--- Tooltip helper, same approach as the sibling addon StockTake.
+--  Title/body may be strings or functions (for live text). SetScript (not
+--  HookScript) takes the event over from the template's DefaultTooltipMixin,
+--  whose OnEnter would otherwise show a bright HoverBackground on the dark
+--  settings page and pop its own tooltip.
 local function AttachTooltip(frame, title, body)
-    frame:HookScript("OnEnter", function(self)
+    if frame.HoverBackground then frame.HoverBackground:Hide() end
+    frame:SetScript("OnEnter", function(self)
         if not GameTooltip then return end
         local titleText = type(title) == "function" and title() or title
         local bodyText = type(body) == "function" and body() or body
@@ -279,7 +279,7 @@ local function AttachTooltip(frame, title, body)
         if bodyText then GameTooltip:AddLine(bodyText, 0.85, 0.85, 0.85, true) end
         GameTooltip:Show()
     end)
-    frame:HookScript("OnLeave", function()
+    frame:SetScript("OnLeave", function()
         if GameTooltip then GameTooltip:Hide() end
     end)
 end
@@ -305,31 +305,6 @@ local function NewButton(parent, width, height, text)
     return button
 end
 
-local function SwitchSet(switch, value)
-    switch._knob:ClearAllPoints()
-    if value then
-        SetColor(switch._track, ACCENT[1], ACCENT[2], ACCENT[3], 0.95)
-        switch._knob:SetPoint("RIGHT", switch, "RIGHT", -3, 0)
-    else
-        SetColor(switch._track, 0.16, 0.18, 0.20, 0.90)
-        switch._knob:SetPoint("LEFT", switch, "LEFT", 3, 0)
-    end
-end
-
-local function NewSwitch(parent)
-    local switch = CreateFrame("Button", nil, parent)
-    switch:SetSize(46, 22)
-    switch:RegisterForClicks("LeftButtonUp")
-    local track = switch:CreateTexture(nil, "BACKGROUND")
-    track:SetAllPoints()
-    AddBorder(switch, 1, 1, 1, 0.12)
-    local knob = switch:CreateTexture(nil, "OVERLAY")
-    knob:SetSize(16, 16)
-    SetColor(knob, 1, 1, 1, 0.95)
-    switch._track = track
-    switch._knob = knob
-    return switch
-end
 
 -------------------------------------------------------------------------------
 --  Refresh plumbing
@@ -379,55 +354,6 @@ end
 
 -------------------------------------------------------------------------------
 --  Row / section builders
--------------------------------------------------------------------------------
-local function AddRow(parent, y, height)
-    height = height or ROW_HEIGHT
-    local row = CreateFrame("Frame", nil, parent)
-    row:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, y)
-    row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, y)
-    row:SetHeight(height)
-    local bg = row:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    SetColor(bg, 1, 1, 1, 0.04)
-    return row, y - height - ROW_GAP
-end
-
---- Row label.
-local function AddRowLabel(row, key)
-    local label = NewText(row, "GameFontNormal")
-    label:SetPoint("LEFT", 12, 0)
-    label:SetText(L(key))
-    label:SetJustifyH("LEFT")
-    return label
-end
-
---- Toggle row: right aligned switch plus a localised on/off word.
---  No hint parameter any more: explanations go on tooltips now, so a row is
---  always one line tall and the layout has nothing to get wrong.
-local function AddToggle(parent, y, labelKey, get, set)
-    local row, nextY = AddRow(parent, y, ROW_HEIGHT)
-    AddRowLabel(row, labelKey)
-
-    local stateText = NewText(row, "GameFontNormalSmall")
-    stateText:SetPoint("RIGHT", -68, 0)
-    local switch = NewSwitch(row)
-    switch:SetPoint("RIGHT", -12, 0)
-
-    switch:SetScript("OnClick", function()
-        set(not get())
-        RefreshUI()
-    end)
-
-    AddUpdater(function()
-        local on = get() and true or false
-        SwitchSet(switch, on)
-        stateText:SetText(on and L("VALUE_ON") or L("VALUE_OFF"))
-        stateText:SetTextColor(1, 1, 1, on and 0.90 or 0.50)
-    end)
-
-    return row, nextY
-end
-
 -------------------------------------------------------------------------------
 --  Status bar
 -------------------------------------------------------------------------------
@@ -621,13 +547,6 @@ local standalone       -- fallback window when the Settings API is missing
 local applyAdvancedView
 local panelReady = false
 
-local function SetContentHeight(content, height)
-    -- Only the scroll child grows; the host (settings canvas or standalone
-    -- window) keeps the size the client gave it, otherwise the panel pushes
-    -- itself past the bottom of the settings window.
-    content:SetHeight(height)
-end
-
 --- Opens the settings page: the Blizzard category when it exists, otherwise the
 --- standalone window. Never silently does nothing.
 function OpenOptions()
@@ -650,37 +569,72 @@ function OpenOptions()
     return false
 end
 
-local function BuildUI(contentParent)
-    -- Everything lives inside a scroll frame. The advanced section is taller
-    -- than the settings area, and the client scrolls nothing for us: without
-    -- this the lower rows were drawn outside the window (on top of Blizzard's
-    -- own Close button) instead of being clipped and scrollable.
-    local scroll = CreateFrame("ScrollFrame", "AutoSpellQueueOptionsScroll", contentParent,
-        "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", contentParent, "TOPLEFT", 0, 0)
-    scroll:SetPoint("BOTTOMRIGHT", contentParent, "BOTTOMRIGHT", -26, 2)
+--- Template introspection, exactly as the client exposes it (StockTake does the
+--- same): prefer the modern settings templates, fall back on the older ones.
+local function HasTemplate(name)
+    local util = C_XMLUtil
+    if not (util and util.GetTemplateInfo) then return false end
+    local ok, info = pcall(util.GetTemplateInfo, name)
+    return ok and info ~= nil
+end
 
-    local content = CreateFrame("Frame", nil, scroll)
-    content:SetPoint("TOPLEFT", scroll, "TOPLEFT", PANEL_PAD, -PANEL_PAD)
-    -- A scroll child MUST carry an explicit width. The client does not derive it
-    -- from anchors inside a ScrollFrame, and every widget here is anchored
-    -- left+right to the content, so a zero-width child renders as *nothing at
-    -- all* - that is exactly what left the settings page blank in-game
-    -- (measured: SCROLL 639x602 but CHILD 0x440). Verified against GearInsight,
-    -- which sets the width explicitly and re-applies it from OnSizeChanged.
-    content:SetWidth(math.max(240, (scroll:GetWidth() or 0) - 2 * PANEL_PAD))
-    content:SetHeight(10)
-    scroll:SetScrollChild(content)
-    scroll:SetScript("OnSizeChanged", function(_, width)
-        content:SetWidth(math.max(240, (width or 0) - 2 * PANEL_PAD))
+local CHECKBOX_TEMPLATE = HasTemplate("SettingsCheckboxTemplate")
+    and "SettingsCheckboxTemplate" or "InterfaceOptionsCheckButtonTemplate"
+local BUTTON_TEMPLATE = HasTemplate("UIPanelButtonTemplate")
+    and "UIPanelButtonTemplate" or "UIPanelButtonTemplate"
+
+--- Checkbox row in the style of the sibling addon StockTake: a Blizzard-native
+--- checkbox plus OUR OWN anchored label.
+--  Why our own label: SettingsCheckboxTemplate ships no text element, so
+--  Button:SetText creates an unanchored FontString - the API reads it back fine
+--  while nothing is drawn on screen. (Trap documented in StockTake's source.)
+local function AddCheckbox(parent, y, labelKey, get, set, tooltip)
+    local checkbox = CreateFrame("CheckButton", nil, parent, CHECKBOX_TEMPLATE)
+    checkbox:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, y)
+
+    local label = checkbox:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    label:SetPoint("LEFT", checkbox, "RIGHT", 8, 0)
+    label:SetJustifyH("LEFT")
+    label:SetText(L(labelKey))
+
+    checkbox:SetChecked(get() and true or false)
+    checkbox:SetScript("OnClick", function(self)
+        set(self:GetChecked() and true or false)
+        RefreshUI()
     end)
+    AttachTooltip(checkbox, L(labelKey), tooltip)
+    AddUpdater(function()
+        checkbox:SetChecked(get() and true or false)
+    end)
+    return checkbox
+end
+
+--- Native button (Blizzard art, no custom drawing).
+--  It needs a GLOBAL NAME: UIPanelButtonTemplate's `$parentText` child only
+--  exists when the control has a name to expand from, and an unnamed template
+--  button silently ends up with an unanchored, invisible label.
+local function AddButton(parent, y, labelKey, onClick, tooltip, width)
+    local button = CreateFrame("Button", "AutoSpellQueueResetButton", parent, BUTTON_TEMPLATE)
+    button:SetSize(width or 140, 22)
+    button:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, y)
+    button:SetText(L(labelKey))
+    button:SetScript("OnClick", onClick)
+    AttachTooltip(button, L(labelKey), tooltip)
+    return button
+end
+
+local function BuildUI(contentParent)
+    -- Layout follows the sibling addon StockTake (same author, same client):
+    -- native Blizzard controls anchored straight to the panel, no scroll frame,
+    -- no custom borders or backgrounds, one line of status text under the title.
+    -- Keeping both settings pages the same means players learn one layout.
+    local panel = contentParent
 
     -- Throttled refresh ticker for the panel. It is a child of the panel on
     -- purpose: the client does not call OnUpdate on a frame whose parent is
-    -- hidden, so this costs nothing while the settings page is closed, and it
-    -- is never called on hidden widgets.
-    local poller = CreateFrame("Frame", nil, contentParent)
-    poller:SetAllPoints(contentParent)
+    -- hidden, so this costs nothing while the settings page is closed.
+    local poller = CreateFrame("Frame", nil, panel)
+    poller:SetAllPoints(panel)
     local pollAccum = 0
     poller:SetScript("OnUpdate", function(_, elapsed)
         pollAccum = pollAccum + (elapsed or 0)
@@ -689,65 +643,27 @@ local function BuildUI(contentParent)
         RefreshUI()
     end)
 
-    local y = 0
+    local y = -16
 
-    -- ---------------------------------------------------------------------
-    --  The whole panel, deliberately: a title that is also the master switch,
-    --  one status line, the readout switch and "reset position".
-    --
-    --  Everything a curious player might want (what the number is made of, how
-    --  often it samples, where the diagnostics and the escape hatch live) is on
-    --  a tooltip instead of on the page. A wall of explanation is not something
-    --  an ordinary player needs to read to trust an addon that has nothing to
-    --  configure.
-    -- ---------------------------------------------------------------------
-
-    -- Title row = master switch ---------------------------------------------
-    local titleRow = CreateFrame("Frame", nil, content)
-    titleRow:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
-    titleRow:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
-    titleRow:SetHeight(34)
-
-    local title = NewText(titleRow, "GameFontNormalLarge")
-    title:SetPoint("LEFT", 2, 0)
+    -- Title ------------------------------------------------------------------
+    local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, y)
     title:SetText(L("PANEL_TITLE"))
-    title:SetTextColor(ACCENT[1], ACCENT[2], ACCENT[3])
-
-    local stateText = NewText(titleRow, "GameFontNormalSmall")
-    stateText:SetPoint("RIGHT", -68, 0)
-    local switch = NewSwitch(titleRow)
-    switch:SetPoint("RIGHT", -12, 0)
-    switch:SetScript("OnClick", function()
-        Core.SetEnabled(not Core.IsEnabled())
-        RefreshUI()
-    end)
-    AttachTooltip(titleRow, L("PANEL_TITLE"), L("SETTING_ENABLED_HINT"))
-
-    AddUpdater(function()
-        local on = Core.IsEnabled() and true or false
-        SwitchSet(switch, on)
-        stateText:SetText(on and L("VALUE_ON") or L("VALUE_OFF"))
-        stateText:SetTextColor(1, 1, 1, on and 0.90 or 0.50)
-    end)
-    y = y - 34 - 4
+    y = y - 24
 
     -- One status line --------------------------------------------------------
-    -- The text sits inside a mouse-enabled frame on purpose: a FontString cannot
-    -- receive mouse events in the client (no HookScript/OnEnter), so attaching a
-    -- tooltip to one is impossible - it threw and left the page half built.
-    local statusRow = CreateFrame("Frame", nil, content)
-    statusRow:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
-    statusRow:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
-    statusRow:SetHeight(20)
+    -- It lives in a mouse-enabled frame so it can carry the tooltip with the
+    -- long explanation (a FontString cannot receive mouse events).
+    local statusRow = CreateFrame("Frame", nil, panel)
+    statusRow:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, y)
+    statusRow:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -16, y)
+    statusRow:SetHeight(18)
     statusRow:EnableMouse(true)
 
-    local statusLine = NewText(statusRow, "GameFontNormal")
-    statusLine:SetPoint("LEFT", 2, 0)
+    local statusLine = statusRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    statusLine:SetPoint("LEFT", 0, 0)
     statusLine:SetJustifyH("LEFT")
     statusLine:SetText(L("STATE_IDLE"))
-    -- The long version lives here: what the addon does, how the number was
-    -- derived, how often it samples, and where diagnostics / the escape hatch
-    -- are. Hover to read it; nobody has to.
     AttachTooltip(statusRow, L("PANEL_TITLE"), function()
         local status = refreshStatus or Core.GetStatus()
         return table.concat({
@@ -777,33 +693,26 @@ local function BuildUI(contentParent)
         statusLine:SetText(text)
         statusLine:SetTextColor(color[1], color[2], color[3])
     end)
-    y = y - 20 - 12
 
-    -- Display ---------------------------------------------------------------
-    -- The only thing left for the player to decide: draw the readout or not.
-    local row
-    row, y = AddToggle(content, y, "SETTING_SHOW_STATUS",
+    -- Controls ---------------------------------------------------------------
+    AddCheckbox(panel, -78, "SETTING_ENABLED",
+        function() return Core.IsEnabled() end,
+        function(value) Core.SetEnabled(value) end,
+        L("SETTING_ENABLED_HINT"))
+
+    AddCheckbox(panel, -110, "SETTING_SHOW_STATUS",
         function() return Cfg().showStatus end,
         function(value)
             Core.SetConfig("showStatus", value, { noRefresh = true })
             CreateStatusBar()
             ApplyStatusBarVisibility()
-        end)
-    local showRow = row
-    AttachTooltip(showRow, L("SETTING_SHOW_STATUS"), L("TOOLTIP_STATUS_BAR"))
+        end,
+        L("TOOLTIP_STATUS_BAR"))
 
-    do
-        local positionRow
-        positionRow, y = AddRow(content, y, 30)
-        local positionButton = NewButton(positionRow, 180, 24, L("BUTTON_RESET_POSITION"))
-        positionButton:SetPoint("LEFT", 12, 0)
-        AttachTooltip(positionButton, L("BUTTON_RESET_POSITION"), L("TOOLTIP_RESET_POSITION"))
-        positionButton:SetScript("OnClick", function() ResetStatusBarPosition(true) end)
-    end
+    AddButton(panel, -146, "BUTTON_RESET_POSITION",
+        function() ResetStatusBarPosition(true) end,
+        L("TOOLTIP_RESET_POSITION"))
 
-    -- No footer line: its content (how headroom is derived, how often it samples,
-    -- where /asq status and /asq base live) is on the status-line tooltip.
-    SetContentHeight(content, -y + 6)
     built = true
     RefreshUI()
 end

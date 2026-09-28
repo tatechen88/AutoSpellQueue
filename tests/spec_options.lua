@@ -127,12 +127,7 @@ local function ButtonsIn(row)
     end)
 end
 
-local function SwitchOf(key)
-    for _, button in ipairs(ButtonsIn(RowOf(key))) do
-        if button._track then return button end
-    end
-    return nil
-end
+
 
 --- Returns minus, plus for a stepper row (identified by their label text).
 local function StepperOf(key)
@@ -148,9 +143,13 @@ local function CycleOf(key)
     return ButtonsIn(RowOf(key))[1]
 end
 
+--- Template buttons carry their label in `.Text` (the `$parentText` child);
+--- hand-made ones put it in `._text`. Both exist in the client.
 local function FindButtonByText(text)
     return Stub.FindWidget(function(widget)
-        return widget.__kind == "Button" and widget._text and widget._text.text == text
+        if widget.__kind ~= "Button" then return false end
+        local label = widget._text or widget.Text
+        return label ~= nil and label.text == text
     end)
 end
 
@@ -167,17 +166,21 @@ local function Click(widget)
     T.notNil(widget, "控件不存在，无法点击")
     local handler = widget.__scripts and widget.__scripts.OnClick
     T.notNil(handler, "控件缺少 OnClick 处理器")
-    handler(widget, "LeftButton", false)
+    -- 桩模拟客户端：复选框会先翻转勾选状态，再触发 OnClick
+    Stub.Click(widget)
 end
 
---- The panel's master switch: it sits in the title row (the title IS the label).
-local function MasterSwitch()
-    local title = FindFontStringWithText(Core.L("PANEL_TITLE"))
-    if not title then return nil end
-    for _, button in ipairs(ButtonsIn(title.parent)) do
-        if button._track then return button end
-    end
+--- A checkbox located by its (own, anchored) label - StockTake style.
+local function CheckboxOf(labelKey)
+    local label = FindFontStringWithText(Core.L(labelKey))
+    if not label then return nil end
+    local checkbox = label.parent
+    if checkbox and checkbox.__checkButton then return checkbox end
     return nil
+end
+
+local function MasterSwitch()
+    return CheckboxOf("SETTING_ENABLED")
 end
 
 --- The single status line: the last FontString created directly on the panel
@@ -269,7 +272,7 @@ T.test("Boot: 面板、状态条、极简面板的三个部件都建起来了，
 
     T.notNil(MasterSwitch(), "标题行应有总开关")
     T.notNil(StatusLine(), "应有一行状态")
-    T.notNil(SwitchOf("SETTING_SHOW_STATUS"), "应有显示悬浮状态条开关")
+    T.notNil(CheckboxOf("SETTING_SHOW_STATUS"), "应有显示悬浮状态条复选框")
     T.notNil(FindButtonByText(Core.L("BUTTON_RESET_POSITION")), "应有重置位置按钮")
     -- 构建失败过去会留下半页/空页且没有任何说明——这里把它变成可见的失败
     T.isNil(_G.ASQ_BUILD_ERROR, "面板构建不得有错误（实得 " .. tostring(_G.ASQ_BUILD_ERROR) .. "）")
@@ -280,9 +283,9 @@ end)
 
 T.test("面板必须极简：两个开关 + 一行状态 + 一个动作按钮，且不许出现长句（守门用例）", function()
     Boot()
-    -- 玩家可见设置只有 enabled / showStatus，面板里就只允许这两个开关。
+    -- 玩家可见设置只有 enabled / showStatus，面板里就只允许这两个复选框。
     T.notNil(MasterSwitch(), "总开关")
-    T.notNil(SwitchOf("SETTING_SHOW_STATUS"), "状态条开关")
+    T.notNil(CheckboxOf("SETTING_SHOW_STATUS"), "状态条开关")
 
     -- v1 的旋钮必须一个都不剩（它们现在是算法的一部分，不再由玩家决定）。
     local removed = {
@@ -295,11 +298,26 @@ T.test("面板必须极简：两个开关 + 一行状态 + 一个动作按钮，
         T.eq(#RowsWithLabel(key), 0, "面板里不该再有这个设置: " .. key)
     end
 
-    local switches = 0
+    local checkboxes = 0
     for _, widget in ipairs(Stub.Widgets()) do
-        if widget.__kind == "Button" and widget._track then switches = switches + 1 end
+        if widget.__checkButton then checkboxes = checkboxes + 1 end
     end
-    T.eq(switches, 2, "面板里只允许两个开关（实得 " .. switches .. "）")
+    T.eq(checkboxes, 2, "面板里只允许两个复选框（实得 " .. checkboxes .. "）")
+
+    -- StockTake 的两个坑（它们自己在注释里记着，这里变成断言）：
+    --   1) 现代复选框模板没有文本元素，Button:SetText 会造一个**无锚点**字体串
+    --      —— API 读回正常但屏幕上看不见。所以标签必须自建且带锚点。
+    --   2) 不该再有任何自绘开关（旧版用 _track 纹理画的那个）。
+    for _, checkbox in ipairs(Stub.Widgets()) do
+        if checkbox.__checkButton then
+            T.isNil(checkbox.Text, "复选框不得用 Button:SetText 当标签（会是无锚点字体串）")
+            T.eq(checkbox.__template, "SettingsCheckboxTemplate",
+                "应使用暴雪原生设置复选框模板")
+        end
+    end
+    for _, widget in ipairs(Stub.Widgets()) do
+        T.isNil(widget._track, "不该再有自绘开关（_track 纹理）")
+    end
 
     -- 保留的唯一按钮是「重置位置」：它是动作，不是参数。
     T.notNil(FindButtonByText(Core.L("BUTTON_RESET_POSITION")), "重置位置按钮应保留")
@@ -318,57 +336,63 @@ T.test("面板必须极简：两个开关 + 一行状态 + 一个动作按钮，
     T.isNil(FindFontStringWithText(Core.L("PANEL_FOOTER")), "脚注不应再占用页面")
 end)
 
-T.test("修复: 滚动子框必须显式设宽（宽度为 0 会让整页空白，客户端实测过）", function()
+T.test("StockTake 风格：面板直接锚在画布上，不再需要滚动框（那类坑随之消失）", function()
     Boot()
-    local scroll = Stub.FindFrame("AutoSpellQueueOptionsScroll")
-    T.notNil(scroll, "应有滚动框")
-    local content = scroll.__scrollChild
-    T.notNil(content, "滚动框必须有内容子框")
+    -- 真机曾因滚动子框宽度=0 整页空白（PANEL 665x604 / SCROLL 639x602 / CHILD 0x440）。
+    -- 参照 StockTake 的做法后不再有滚动框：控件直接挂在面板上，宽度来自面板本身。
+    T.isNil(Stub.FindFrame("AutoSpellQueueOptionsScroll"),
+        "极简面板不该再有滚动框（StockTake 风格：直锚面板）")
 
-    -- 真机实测（2026-09-28）：PANEL 665x604 / SCROLL 639x602 / CHILD 0x440。
-    -- 客户端不会从锚点推导 ScrollFrame 子框的宽度，而没有宽度时，所有以
-    -- 左+右双锚点挂上去的控件都会渲染成「什么都没有」——就是那次整页空白。
-    local width = content:GetWidth()
-    T.truthy(type(width) == "number" and width > 0,
-        "滚动子框必须显式设宽（实得 " .. tostring(width) .. "）")
-
-    -- 宿主尺寸变化时必须跟着改，否则窗口拉大后内容会被截断
-    scroll:SetWidth(600)
-    if scroll.__scripts and scroll.__scripts.OnSizeChanged then
-        scroll.__scripts.OnSizeChanged(scroll, 600)
-    end
-    T.truthy(content:GetWidth() > 0, "OnSizeChanged 之后宽度仍必须为正")
-    T.truthy(content:GetWidth() < 600, "内容宽度应小于滚动框（要留出内边距）")
+    local panel = Panel()
+    T.notNil(panel, "面板应存在")
+    local title = FindFontStringWithText(Core.L("PANEL_TITLE"))
+    T.notNil(title, "标题应存在")
+    T.eq(title.parent, panel, "标题必须直接挂在面板上")
+    T.eq(title:GetNumPoints(), 1, "标题只用一个锚点（左上），不做左右拉伸")
 end)
 
-T.test("极简面板的布局：状态行在开关下方、按钮不重叠（几何断言）", function()
+T.test("StockTake 风格布局：标题 → 状态行 → 两个复选框 → 按钮，逐层向下不重叠", function()
     Boot()
-    local content = Stub.FindFrame("AutoSpellQueueOptionsScroll").__scrollChild
+    local panel = Panel()
     local title = FindFontStringWithText(Core.L("PANEL_TITLE"))
     local status = StatusLine()
+    T.notNil(panel, "面板应存在")
     T.notNil(title, "标题应存在")
     T.notNil(status, "状态行应存在")
+    T.eq(title.parent, panel, "标题直接锚在面板上（StockTake 风格）")
 
+    local _, _, _, _, titleY = title:GetPoint()
     local statusRow = status.parent
-    local _, _, _, _, titleY = title.parent:GetPoint()
     local _, _, _, _, statusY = statusRow:GetPoint()
-    local titleHeight = title.parent:GetHeight()
-    T.truthy(statusY <= titleY - titleHeight,
-        "状态行必须在标题行下方（标题行 y=" .. tostring(titleY) .. " h=" .. tostring(titleHeight) ..
-        "，状态行 y=" .. tostring(statusY) .. "）")
-    T.truthy(statusRow:GetHeight() <= 24, "状态行必须是单行高度")
+    T.truthy(statusY <= titleY - 20,
+        "状态行必须在标题下方（标题 y=" .. tostring(titleY) .. "，状态行 y=" .. tostring(statusY) .. "）")
 
-    local showRow = RowOf("SETTING_SHOW_STATUS")
-    local _, _, _, _, showY = showRow:GetPoint()
-    T.truthy(showY <= statusY - status:GetHeight(),
-        "显示开关必须落在状态行下方（状态行 y=" .. tostring(statusY) ..
-        " h=" .. tostring(status:GetHeight()) .. "，开关行 y=" .. tostring(showY) .. "）")
+    local enabled = CheckboxOf("SETTING_ENABLED")
+    local shown = CheckboxOf("SETTING_SHOW_STATUS")
+    T.notNil(enabled, "总开关复选框应存在")
+    T.notNil(shown, "状态条复选框应存在")
 
-    -- 状态行不许换行：它只有一行高度，换行会把下面的控件压上来
-    T.truthy(status:GetHeight() <= 24, "状态行必须是单行（实得高度 " .. tostring(status:GetHeight()) .. "）")
-    T.truthy(content:GetHeight() > 0, "内容高度必须为正")
-    T.truthy(content:GetHeight() < 200, "极简面板的内容高度不该超过 200（实得 " ..
-        tostring(content:GetHeight()) .. "）")
+    local _, _, _, _, enabledY = enabled:GetPoint()
+    local _, _, _, _, shownY = shown:GetPoint()
+    T.truthy(enabledY <= statusY - 18,
+        "总开关必须在状态行下方（状态行 y=" .. tostring(statusY) .. "，开关 y=" .. tostring(enabledY) .. "）")
+    T.truthy(shownY <= enabledY - 24,
+        "两个复选框之间至少 24px，否则会挤在一起（" .. tostring(enabledY) .. " → " .. tostring(shownY) .. "）")
+
+    local reset = FindButtonByText(Core.L("BUTTON_RESET_POSITION"))
+    T.notNil(reset, "重置位置按钮应存在")
+    local _, _, _, _, resetY = reset:GetPoint()
+    T.truthy(resetY <= shownY - 24,
+        "按钮必须在第二个复选框下方（" .. tostring(shownY) .. " → " .. tostring(resetY) .. "）")
+
+    -- 左对齐一致：StockTake 里所有控件都在 x=16
+    for name, widget in pairs({ enabled = enabled, shown = shown, reset = reset }) do
+        local _, _, _, x = widget:GetPoint()
+        T.eq(x, 16, name .. " 的左边界应与 StockTake 一致（x=16），实得 " .. tostring(x))
+    end
+
+    -- 状态行不许换行：单行高度，换行会压到下面的控件
+    T.truthy(status:GetHeight() <= 20, "状态行必须是单行（实得高度 " .. tostring(status:GetHeight()) .. "）")
 end)
 
 T.test("UI 只构建一次：重复 Build / Refresh 不再新建控件", function()    Boot()
@@ -407,10 +431,10 @@ T.test("开关：只有 enabled 与 showStatus 两个，且都真的写进配置
     -- showStatus：写配置 + 真的 Show/Hide 状态条（副作用必须与开关一致）
     local bar = StatusBar()
     bar:Show()
-    Click(SwitchOf("SETTING_SHOW_STATUS"))
+    Click(CheckboxOf("SETTING_SHOW_STATUS"))
     T.falsy(Core.GetConfig().showStatus)
     T.falsy(bar:IsShown(), "关掉开关后状态条必须隐藏")
-    Click(SwitchOf("SETTING_SHOW_STATUS"))
+    Click(CheckboxOf("SETTING_SHOW_STATUS"))
     T.truthy(bar:IsShown(), "重新打开后状态条必须显示")
 
     -- enabled：总开关写入后必须真的接管/归还
@@ -455,21 +479,7 @@ T.test("面板不再暴露任何可调参数：Sanitize 会自动清掉旧存档
     T.eq(Stub.CVarValue(), tostring(Core.GetStatus().target), "迁移后算法必须照常工作")
 end)
 
-T.test("修复: 内容必须放在滚动框里，且宿主高度不被内容撑大", function()
-    Boot()
-    local scroll = Stub.FindFrame("AutoSpellQueueOptionsScroll")
-    T.notNil(scroll, "设置内容必须放在滚动框里，否则内容一多就会画到窗口外")
-    local content = scroll.__scrollChild
-    T.notNil(content, "滚动框必须有内容子框")
-    local host = scroll.parent
-    T.notNil(host, "滚动框必须有宿主")
 
-    resetWorld()
-    Options.Refresh()
-    local hostHeight = host:GetHeight()
-    T.truthy(content:GetHeight() > 0, "内容必须有高度（否则滚动范围是空的）")
-    T.eq(host:GetHeight(), hostHeight, "宿主高度不得被内容撑大——真机上表现为面板溢出设置窗口")
-end)
 
 ------------------------------------------------------------------------------
 --  Status card and status bar text
