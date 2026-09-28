@@ -70,6 +70,27 @@ T.test("ns.L 是函数，ns.LOCALES 三套表都存在", function()
     T.truthy(#fallbackKeys > 100, "enUS 应包含全部键（实得 " .. #fallbackKeys .. " 个）")
 end)
 
+T.test("插件显示名：中文界面必须是「施法容限」，英文界面与 .toc Title 一致", function()
+    local zh = LoadLocale("zhCN")
+    local tw = LoadLocale("zhTW")
+    local en = LoadLocale("enUS")
+
+    T.eq(zh.L("ADDON_TITLE"), "施法容限", "zhCN 玩家在选项里看到的名字")
+    T.eq(tw.L("ADDON_TITLE"), "施法容限", "zhTW 同名（该词繁简同形）")
+    T.eq(en.L("ADDON_TITLE"), "Auto Spell Queue", "enUS 与 .toc 的 ## Title 一致")
+
+    -- .toc 的本地化标题必须与语言表同名，否则插件列表和设置页会显示两个名字
+    -- （.toc 文本由 tools/run-tests.mjs 注入：fengari 里没有可用的 io.open）
+    local tocText = _G.ASQ_TEST_TOC
+    T.truthy(type(tocText) == "string" and #tocText > 0, "运行器应注入 .toc 文本")
+    local title = tocText:match("##%s*Title:%s*([^\r\n]+)")
+    local titleZh = tocText:match("##%s*Title%-zhCN:%s*([^\r\n]+)")
+    local titleTw = tocText:match("##%s*Title%-zhTW:%s*([^\r\n]+)")
+    T.eq(title, en.L("ADDON_TITLE"), ".toc ## Title 与 enUS 显示名一致")
+    T.eq(titleZh, zh.L("ADDON_TITLE"), ".toc ## Title-zhCN 与 zhCN 显示名一致")
+    T.eq(titleTw, tw.L("ADDON_TITLE"), ".toc ## Title-zhTW 与 zhTW 显示名一致")
+end)
+
 T.test("enUS / zhCN / zhTW 键集完全相同（契约第一条）", function()
     local en = SortedKeys(locales.enUS)
     CompareKeySets(SortedKeys(locales.zhCN), en, "zhCN")
@@ -106,7 +127,7 @@ end)
 T.test("未列出的客户端语言回退 enUS（契约第二条）", function()
     local deDE = LoadLocale("deDE")
     T.eq(type(deDE.L), "function")
-    for _, key in ipairs({ "PANEL_TITLE", "SETTING_ENABLED", "STATE_ERROR", "MSG_RESET_DONE" }) do
+    for _, key in ipairs({ "ADDON_TITLE", "SETTING_ENABLED", "STATE_ERROR", "MSG_RESET_DONE" }) do
         T.eq(deDE.L(key), locales.enUS[key], "deDE 应回退 enUS: " .. key)
     end
     T.eq(deDE.L("__NO_SUCH_KEY__"), "__NO_SUCH_KEY__")
@@ -116,12 +137,12 @@ T.test("zhCN / zhTW 使用各自的表，缺键时才回退 enUS（契约第三�
     for _, name in ipairs({ "zhCN", "zhTW" }) do
         local loaded = LoadLocale(name)
         T.eq(loaded.LOCALE, name, "客户端语言为 " .. name .. " 时应选中该表")
-        for _, key in ipairs({ "PANEL_TITLE", "SETTING_ENABLED", "SLASH_CMD_STATUS" }) do
+        for _, key in ipairs({ "ADDON_TITLE", "SETTING_ENABLED", "SLASH_CMD_STATUS" }) do
             T.eq(loaded.L(key), locales[name][key], name .. " 应返回自己的文本: " .. key)
         end
 
         -- 人为挖掉一个键：必须回退 enUS，而不是泄漏键名
-        local probe = "PANEL_TITLE"
+        local probe = "ADDON_TITLE"
         local saved = loaded.LOCALES[name][probe]
         loaded.LOCALES[name][probe] = nil
         T.eq(loaded.L(probe), locales.enUS[probe], name .. " 缺键时必须回退 enUS")

@@ -693,9 +693,11 @@ end
 function Stub.InstallSettings()
     local calls = { openToCategory = {}, registered = {} }
     _G.Settings = {
-        RegisterCanvasLayoutCategory = function(panel, name, subName)
-            calls.registerCanvas = { panel = panel, name = name, subName = subName }
-            local category = { ID = "AutoSpellQueue", name = name }
+        RegisterCanvasLayoutCategory = function(panel, name, addonName)
+            calls.registerCanvas = { panel = panel, name = name, addonName = addonName }
+            -- The client groups the page under this addon and reopens it by ID:
+            -- the third argument is that stable identity, `name` is the label.
+            local category = { ID = addonName or name, name = name }
             function category:GetID() return self.ID end
             calls.registered[#calls.registered + 1] = category
             return category

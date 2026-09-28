@@ -347,7 +347,7 @@ T.test("StockTake 风格：面板直接锚在画布上，不再需要滚动框�
 
     local panel = Panel()
     T.notNil(panel, "面板应存在")
-    local title = FindFontStringWithText(Core.L("PANEL_TITLE"))
+    local title = FindFontStringWithText(Core.L("ADDON_TITLE"))
     T.notNil(title, "标题应存在")
     T.eq(title.parent, panel, "标题必须直接挂在面板上")
     T.eq(title:GetNumPoints(), 1, "标题只用一个锚点（左上），不做左右拉伸")
@@ -356,7 +356,7 @@ end)
 T.test("StockTake 风格布局：标题 → 状态行 → 两个复选框 → 按钮，逐层向下不重叠", function()
     Boot()
     local panel = Panel()
-    local title = FindFontStringWithText(Core.L("PANEL_TITLE"))
+    local title = FindFontStringWithText(Core.L("ADDON_TITLE"))
     local status = StatusLine()
     T.notNil(panel, "面板应存在")
     T.notNil(title, "标题应存在")
@@ -939,6 +939,14 @@ T.test("斜杠 /asq：打开设置页（走 Settings 分类）", function()
 
     slash("")
     T.eq(#Stub.settingsCalls.openToCategory, 1, "空参数应打开设置页")
+    -- 显示名随语言（zhCN 为「施法容限」），但分类内部名必须是稳定的文件夹名，
+    -- 否则换语言后 Blizzard 会当成另一个分类、SavedVars/分组也会错位。
+    T.eq(Stub.settingsCalls.registerCanvas.addonName, "AutoSpellQueue",
+        "注册时第三个参数必须是稳定的插件标识（文件夹名）")
+    T.eq(Stub.settingsCalls.registerCanvas.name, Core.L("ADDON_TITLE"),
+        "显示名必须是本地化标题")
+    T.eq(Stub.settingsCalls.registered[1].ID, "AutoSpellQueue",
+        "分类 ID 不得随语言变化")
     T.eq(Stub.settingsCalls.openToCategory[1], "AutoSpellQueue", "应打开本插件的分类")
 
     slash("  config  ")
@@ -1154,7 +1162,7 @@ T.test("状态条 tooltip：鼠标移入时把状态与当前值写进提示", f
 
     onEnter(bar)
     T.truthy(GameTooltip:IsShown(), "移入后 tooltip 应显示")
-    T.truthy(Stub.TooltipContains(Core.L("PANEL_TITLE")), "提示应含标题")
+    T.truthy(Stub.TooltipContains(Core.L("ADDON_TITLE")), "提示应含标题")
     T.truthy(Stub.TooltipContains(Core.L("LABEL_STATUS")), "提示应含状态")
 
     local onLeave = bar.__scripts.OnLeave

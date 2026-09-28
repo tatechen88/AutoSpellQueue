@@ -673,7 +673,8 @@ local function SetError(reason)
 end
 Core.SetError = SetError
 
---- Chat prefix in the same colour as everything else on screen.
+--- Chat prefix in the same colour as everything else on screen, and in the
+--- player's own language ("施法容限: ..." on a Chinese client).
 --  Options publishes the palette (`ns.AccentColor`); the core does not own any
 --  colours of its own, so there is exactly one place that decides them.
 local function PrefixColorCode()
@@ -689,11 +690,22 @@ local function PrefixColorCode()
     return "|cff" .. channel(r) .. channel(g) .. channel(b)
 end
 
+--- The localised name for chat; falls back to the folder name when the locale
+--- table is not loaded yet (it is: Locale loads before Core, but a fallback here
+--- costs nothing and keeps the prefix from coming out empty).
+local function PrefixName()
+    if type(Core.L) == "function" then
+        local ok, name = pcall(Core.L, "ADDON_TITLE")
+        if ok and type(name) == "string" and name ~= "" then return name end
+    end
+    return Core.NAME or "AutoSpellQueue"
+end
+
 local function Output(message)
     if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
-        DEFAULT_CHAT_FRAME:AddMessage(PrefixColorCode() .. "AutoSpellQueue|r: " .. message)
+        DEFAULT_CHAT_FRAME:AddMessage(PrefixColorCode() .. PrefixName() .. "|r: " .. message)
     elseif type(print) == "function" then
-        print("AutoSpellQueue: " .. message)
+        print(PrefixName() .. ": " .. message)
     end
 end
 Core.Output = Output

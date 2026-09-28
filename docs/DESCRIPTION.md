@@ -13,6 +13,8 @@
 
 # 中文版
 
+> 插件名：**施法容限**（英文客户端叫 Auto Spell Queue；文件夹名是 AutoSpellQueue，旧版叫 Tate_ASQ）。
+
 ## 先说一句话
 
 装上一个插件，把你游戏里那个藏起来的「施法队列窗口」自动调成适合你专精和网速的值。你不用管它。
@@ -124,6 +126,9 @@
 ---
 
 # English
+
+> Addon name: **Auto Spell Queue** on an English client, **施法容限** on a Chinese one (the folder is
+> AutoSpellQueue; older versions were called Tate_ASQ).
 
 ## The short version
 

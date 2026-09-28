@@ -123,13 +123,14 @@ local STRINGS = {
     ---------------------------------------------------------------------------
     --  Panel
     ---------------------------------------------------------------------------
-    -- The panel name must match the addon name so players can find it in the
-    -- addon list; the "never casts for you" disclaimer lives in the subtitle,
-    -- because "auto spell queue" on its own reads like an autocast addon.
-    ["PANEL_TITLE"] = {
-        "AutoSpellQueue",
-        "AutoSpellQueue",
-        "AutoSpellQueue",
+    -- 插件在界面上显示的名字（面板标题、悬停提示标题、聊天前缀都用它）。
+    -- 中文客户端叫「施法容限」——那是玩家在游戏选项里看到的同一个词；
+    -- 英文客户端用与 .toc `## Title` 一致的 "Auto Spell Queue"。
+    -- 注意：设置分类的内部名（panel.name）与此无关，它必须是稳定的 "AutoSpellQueue"。
+    ["ADDON_TITLE"] = {
+        "施法容限",
+        "施法容限",
+        "Auto Spell Queue",
     },
     ["PANEL_SUBTITLE"] = {
         "按职业 / 专精、网络延迟与抖动自动维护 SpellQueueWindow（施法队列窗口）——不需要任何设置。它只改这一个客户端设置，不会替你施放技能。",

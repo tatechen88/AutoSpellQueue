@@ -139,6 +139,16 @@ function publishSources(L) {
     lua.lua_setfield(L, tableIndex, to_luastring(file));
   }
   lua.lua_setglobal(L, to_luastring("ASQ_TEST_SOURCES"));
+  // The manifest is metadata, not Lua, but the locale specs must be able to check
+  // that ## Title / ## Title-zhCN / ## Title-zhTW agree with the locale table
+  // (players would otherwise see two different names for one addon).
+  const manifest = fs
+    .readdirSync(ROOT)
+    .filter((entry) => entry.endsWith(".toc"))
+    .map((entry) => fs.readFileSync(path.join(ROOT, entry), "utf8"))
+    .join("\n");
+  lua.lua_pushstring(L, to_luastring(manifest));
+  lua.lua_setglobal(L, to_luastring("ASQ_TEST_TOC"));
 }
 
 function fatal(message) {

@@ -494,7 +494,7 @@ local function ShowStatusBarTooltip(owner)
     GameTooltip:SetOwner(owner, "ANCHOR_TOP")
     GameTooltip:ClearLines()
     local accentR, accentG, accentB = SignalColor()
-    GameTooltip:AddLine(L("PANEL_TITLE"), accentR, accentG, accentB)
+    GameTooltip:AddLine(L("ADDON_TITLE"), accentR, accentG, accentB)
     GameTooltip:AddDoubleLine(L("LABEL_STATUS"), StateLabel(state), 1, 1, 1, 1, 1, 1)
     GameTooltip:AddDoubleLine(L("LABEL_CURRENT"), text, 1, 1, 1, 1, 1, 1)
     GameTooltip:AddDoubleLine(L("LABEL_TARGET"), MsText(status.target), 1, 1, 1, 1, 1, 1)
@@ -720,7 +720,7 @@ local function BuildUI(contentParent)
     -- Title ------------------------------------------------------------------
     local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, y)
-    title:SetText(L("PANEL_TITLE"))
+    title:SetText(L("ADDON_TITLE"))
     y = y - 24
 
     -- One status line --------------------------------------------------------
@@ -736,7 +736,7 @@ local function BuildUI(contentParent)
     statusLine:SetPoint("LEFT", 0, 0)
     statusLine:SetJustifyH("LEFT")
     statusLine:SetText(L("STATE_IDLE"))
-    AttachTooltip(statusRow, L("PANEL_TITLE"), function()
+    AttachTooltip(statusRow, L("ADDON_TITLE"), function()
         local status = refreshStatus or Core.GetStatus()
         return table.concat({
             L("PANEL_SUBTITLE"),
@@ -837,7 +837,7 @@ local function CreateStandaloneWindow()
 
     local title = NewText(window, "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 16, -12)
-    title:SetText(L("PANEL_TITLE"))
+    title:SetText(L("ADDON_TITLE"))
     title:SetTextColor(SignalColor())
     -- 窗口边框与标题也跟着同一个信号色（统一配色：没有第二套颜色）
     AddUpdater(function()
@@ -873,17 +873,23 @@ local function TryCreateSettingsCategory()
         return false
     end
     local panel = CreateFrame("Frame", "AutoSpellQueueOptionsPanel", UIParent)
-    panel.name = L("PANEL_TITLE")
+    -- The category's INTERNAL name stays the folder name in every locale: the
+    -- client uses it to group the page under this addon and to reopen it, while
+    -- the DISPLAY name is localised ("施法容限" on a Chinese client). Keeping the
+    -- two apart is what StockTake does, and it is why the page shows a Chinese
+    -- title without the addon identity changing underneath.
+    panel.name = ADDON_NAME
     panel:SetSize(PANEL_WIDTH, 420)
     panel:HookScript("OnShow", MarkPanelVisible)
 
-    local ok, newCategory = pcall(Settings.RegisterCanvasLayoutCategory, panel, panel.name, panel.name)
+    local ok, newCategory = pcall(Settings.RegisterCanvasLayoutCategory, panel,
+        L("ADDON_TITLE"), ADDON_NAME)
     if not ok or type(newCategory) ~= "table" then
         panel:Hide()
         return false
     end
     if newCategory.ID == nil then
-        newCategory.ID = panel.name
+        newCategory.ID = ADDON_NAME
     end
     if not pcall(Settings.RegisterAddOnCategory, newCategory) then
         panel:Hide()

@@ -272,7 +272,7 @@ T.test("P1: API 返回 false（pcall 未抛错）-> error 状态，绝不记为�
     T.eq(status.applyCount, 0)
     T.eq(status.lastError, CVar.ERR_REJECTED)
     T.truthy(status.lastErrorAt ~= nil)
-    T.truthy(Stub.ChatContains("AutoSpellQueue"), "失败必须让玩家看见")
+    T.truthy(Stub.ChatContains(Core.L("ADDON_TITLE")), "失败必须让玩家看见（且用玩家语言的插件名）")
 end)
 
 T.test("P1: API 谎报 true 但值没变 -> error(verify-failed)，不记为已应用", function()

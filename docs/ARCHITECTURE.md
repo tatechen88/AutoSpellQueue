@@ -17,7 +17,7 @@
 
 | # | 文件 | 职责 | 可否调用 WoW API |
 |---|---|---|---|
-| 1 | `AutoSpellQueue_Locale.lua` | 105 个键 × enUS/zhCN/zhTW，设置 `ns.L(key)` | 仅 `GetLocale()` |
+| 1 | `AutoSpellQueue_Locale.lua` | enUS/zhCN/zhTW 三语键表，设置 `ns.L(key)`（键数不写死：`spec_locale` 保证三语键集一致，取数用 `node tools/run-tests.mjs`） | 仅 `GetLocale()` |
 | 2 | `AutoSpellQueue_Formula.lua` | 纯计算：专精 / 延迟 / 场景 → 目标值 | **禁止** |
 | 3 | `AutoSpellQueue_Latency.lua` | 纯算法：延迟平滑、抖动估计 → 自适应余量与写入阈值 | **禁止** |
 | 4 | `AutoSpellQueue_CVar.lua` | 唯一读写 `SpellQueueWindow` 的地方，环境可注入 | 通过 `env` 表 |
@@ -108,6 +108,17 @@ threshold = clamp(本机平时延迟 + 60ms, 120ms, 250ms)
 > 真机验证：正常延迟 → 白字白框、聊天前缀白色；用临时阈值探针（`HIGH_FLOOR = 10`）让真实读数
 > 触发 → 红字红框。两者都截图确认。
 
+### 插件名：显示名随语言，内部名恒定
+
+| 用途 | 取值 | 说明 |
+|---|---|---|
+| 界面显示名（面板标题、提示标题、聊天前缀） | `ns.L("ADDON_TITLE")` | zhCN/zhTW = `施法容限`，enUS = `Auto Spell Queue` |
+| `.toc` 插件列表名 | `## Title` / `## Title-zhCN` / `## Title-zhTW` | 必须与 `ADDON_TITLE` 三语取值逐字一致（`spec_locale` 断言） |
+| 设置分类内部名 / ID（`panel.name`、`RegisterCanvasLayoutCategory` 第三个参数） | 常量 `AutoSpellQueue`（= 文件夹名，来自 `...` 的第一个参数） | **不得随语言变化**：客户端用它把页面挂到本插件下并重新打开，也是 `OpenToCategory` 的 ID |
+| 存档变量 | `AutoSpellQueueDB`（+ 兼容读取 `Tate_ASQDB`） | 同上，恒定 |
+
+> 实测踩坑：语言表的值顺序是 `{ zhCN, zhTW, enUS }`（见文件头注释）。第一次加 `ADDON_TITLE` 时
+> 按 `{ enUS, zhCN, zhTW }` 写了，中文客户端会显示成英文名——新加的「插件显示名」用例当场抓到。
 ### 只有一套配色：`Options.SignalColor()`
 
 插件的**每一个**着色表面都从同一个函数取色，不允许任何地方自带颜色（原来的品牌绿已全部移除）：
