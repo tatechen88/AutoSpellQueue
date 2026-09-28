@@ -34,9 +34,20 @@
 
 3. 进入游戏，插件默认启用。
 
-**从旧版（Tate_ASQ / Tate's AutoSpellQueue）升级：必须先删除旧的 `Tate_ASQ` 文件夹。**
+### 从旧版（Tate_ASQ / Tate's AutoSpellQueue）升级
 
-旧插件和新插件是两个不同的插件，同时存在会互相争抢同一个 CVar；而且两个 `.toc` 都会声明旧的存档变量。删除旧文件夹后，你原来的设置会在第一次登录时**自动导入一次**，不需要手动配置。
+1. **删除旧的 `AddOns\Tate_ASQ` 文件夹**。新旧是两个独立插件，同时存在会互相争抢同一个 CVar。
+2. **想保留旧设置才需要做这一步**（不做也能用，只是回到默认设置）：
+
+   ```
+   WTF\Account\<你的账号>\SavedVariables\Tate_ASQ.lua
+        → 复制一份并改名为同目录下的 AutoSpellQueue.lua
+   ```
+
+   原因是客户端**只加载与插件文件夹同名的存档文件**：旧设置写在 `Tate_ASQ.lua` 里，
+   删掉旧插件后没有任何东西会去读它。改名后新插件第一次登录就能读到 `Tate_ASQDB`
+   并导入设置，随后清空旧变量（之后 `AutoSpellQueue.lua` 归新插件独有）。
+3. 进入游戏，插件默认启用。
 
 ---
 
@@ -209,7 +220,16 @@ It does **not** automate casting, does **not** run a rotation, does **not** pres
 2. Unzip so that you get `World of Warcraft\_retail_\Interface\AddOns\AutoSpellQueue\`.
 3. Log in — the addon is enabled by default.
 
-**Upgrading from the old version: delete the old `Tate_ASQ` folder first.** Old and new are two separate addons that would fight over the same CVar. Your old settings are imported once automatically on first login.
+**Upgrading from the old version: delete the old `Tate_ASQ` folder first.** Old and new are two separate addons that would fight over the same CVar.
+
+*Keeping your old settings is optional.* The client only loads a SavedVariables file named after the addon folder, and the old settings live in `Tate_ASQ.lua` — after deleting the old addon nothing reads it. To carry them over, copy
+
+```
+WTF\Account\<your account>\SavedVariables\Tate_ASQ.lua
+     → the same folder as AutoSpellQueue.lua
+```
+
+The new addon then reads `Tate_ASQDB` once on the next login and clears it. Without that copy it simply starts from the defaults.
 
 ### How it works
 

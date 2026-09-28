@@ -15,7 +15,7 @@
 | 项 | 值 |
 |---|---|
 | 插件名 / 版本 | `AutoSpellQueue` / `2.0.0`（与 `.toc` 的 `## Version` 一致） |
-| SavedVariables | `AutoSpellQueueDB`（`.toc` 同时声明 `Tate_ASQDB` 用于一次性导入旧存档） |
+| SavedVariables | `AutoSpellQueueDB`（`.toc` 同时声明 `Tate_ASQDB`；**注意**：旧存档只有在玩家把 `SavedVariables\Tate_ASQ.lua` 复制为 `AutoSpellQueue.lua` 后才会被客户端加载，详见下条） |
 | Interface | 120000, 120001, 120005, 120007, 120100, 120105（12.0.0–12.1.5） |
 | 本机 lua 解释器 | **无**。验证走 Node 工具链（`luaparse` = Lua 5.1 语法，`fengari` = Lua 5.3 运行） |
 | 本地化 | **enUS / zhCN / zhTW 三套完整文案**（134 个键 × 3，由同一张源表生成，键集必然一致；其他客户端语言回退 enUS）；设置面板标题三语统一为 `AutoSpellQueue` |
@@ -124,6 +124,7 @@ zip 结构（`pwsh tools/verify.ps1 -Package` 产物，用 §4.2 的校验命令
 - [ ] **城市地图边界**：`Formula.CITY_MAP_FLAG = 0x100000`（`Enum.UIMapFlag.IsCityMap`，文档标注 11.0.0 起）是否覆盖全部主城与中立城；运行时最多沿 `parentMapID` 上溯 4 层，特殊子地图（新主城、相位地图）可能超出。
 - [ ] **Options 面板在游戏内的显示**：滚动框是否溢出、高级折叠、状态卡、状态条随字号缩放、`LibSharedMedia-3.0` 不存在时的字体回退（`.toc` 里是 `OptionalDeps`）。
 - [ ] **Locale 三语齐全性**：`enUS` / `zhCN` / `zhTW` 三套文案由同一张源表生成（当前 134 个键 × 3 套，离线核查每项都是 3 段字符串），但**仍需在游戏内逐屏确认**没有回退到键名（尤其错误原因文案与状态徽标）；其他客户端语言会回退 enUS。
+- [x] **旧存档导入的前提（2026-09-28 实测纠正）**：客户端**只加载与插件文件夹同名的存档文件**（实测本机 `WTF\Account\671932030#1\SavedVariables\Tate_ASQ.lua` 内含 `Tate_ASQDB = {...}`，文件名等于旧插件文件夹名）。因此「删掉旧插件后旧设置会自动导入」**是错的**——那个文件之后再也不会被读取。已在 README / CHANGELOG 写明：想保留旧设置需把该文件复制为同目录下的 `AutoSpellQueue.lua`；`.toc` 声明 `Tate_ASQDB` 是让改名后的文件能到达 `Core.ImportLegacy()` 的必要条件。本机安装时已代为完成该复制（原文件另存为 `Tate_ASQ.lua.pre-v2.bak`）。
 - [ ] **旧 `SavedVariables` 置 nil 后客户端的行为**：导入旧存档后代码把 `_G.Tate_ASQDB` 置为 `nil`，但 `.toc` 仍声明了它——客户端是否仍会写回一张空表，需实测（若会，可在后续版本从 `.toc` 移除该声明，但要保证升级路径仍能导入）。
 - [ ] **`## X-Curse-Project-ID` 尚未添加**：`.toc` 里当前没有任何 X-Curse 指令（只有 `## X-Website`）——相关占位/说明行已按「`.toc` 没有注释语法」的结论**整行删除**。CurseForge 项目创建后需**新增一行** `## X-Curse-Project-ID: <真实数字>` 才能用 packager 上传（详见 `docs/CURSEFORGE.md` §4.3）。
 - [x] **`## X-Website` 已同步**：GitHub 仓库已于 2026-09-28 由 `tatechen88/Tate_ASQ` 改名为 `tatechen88/AutoSpellQueue`（改名前需先解归档），`.toc` 与 README 的 Releases 链接、`git remote` 均已指向新地址；旧链接由 GitHub 301 重定向。

@@ -271,6 +271,15 @@ end
 
 --- Imports settings from the pre-rename SavedVariables (Tate_ASQDB).
 --  The legacy variable is cleared afterwards so the client stops writing it.
+--
+--  IMPORTANT precondition: the client only loads WTF\...\SavedVariables\
+--  <AddOnFolderName>.lua. The old settings live in Tate_ASQ.lua, so deleting
+--  the old addon folder means nothing reads that file any more and this import
+--  simply finds nothing. For the import to run, the player has to copy that
+--  file to AutoSpellQueue.lua once (see README "upgrading"). Declaring
+--  Tate_ASQDB in the .toc is what makes the renamed file reach this function.
+--  Without the copy the addon starts from the defaults - that is expected, not
+--  a failure, so nothing is reported to the player here.
 function Core.ImportLegacy()
     local old = _G[Core.LEGACY_SV]
     if type(old) ~= "table" then return nil end
