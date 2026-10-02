@@ -9,12 +9,11 @@
 
 **English**
 
-> Melee, ranged, tank or healer - each spec gets its own baseline, and an algorithm folds in your latency. No fixed number, no manual tuning. Two checkboxes.
+> Spell queue window tuned per spec: your spec's baseline plus your latency, by algorithm. No fixed number, no manual tuning.
 
 简体中文
 
-> 坦克、治疗、近战、远程各有节奏，每个专精都有自己的基准值，算法再叠上你的延迟；不是固定数字，也不用手动调。
-
+> 按专精自动调整施法容限：专精基准值 + 算法叠加你的延迟；不是固定数字，也不用你手动调。
 
 > 坦克、治療、近戰、遠程各有節奏，每個專精都有自己的基準值，演算法再疊上你的延遲；不是固定數字，也不用你手動調。
 
