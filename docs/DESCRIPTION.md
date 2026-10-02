@@ -423,3 +423,65 @@ It does the number you couldn't be bothered to compute, then shuts up about it.
 
 > 说明：安装步骤在 `README.md` 与本文各有一份是**刻意的**——商店页无法引用仓库文件。
 > 其余事实只在 `README.md` / `ARCHITECTURE.md` 里维护，见 [`README.md`](README.md)（文档地图）。
+
+## 商店页 Description（极简版 · 三语，与 CURSEFORGE-LISTING 副本一致）
+
+### English
+
+- Per-spec feel baseline (~140 ms high-APM melee, ~150 ms standard melee, slightly higher for tanks, ~240 ms for casters).
+- Adds your world latency plus adaptive headroom (30-150 ms, from measured jitter), whichever is larger.
+- Context-aware: cities use the baseline only; instances and the open world follow your latency.
+- Clamped to the client's 0-400 ms range.
+- Re-measures on login, zone change, entering a dungeon or raid, or real latency drift; learned latency is remembered across sessions.
+- Two checkboxes: enable, and show the floating status bar.
+- The number on screen is the tolerance value; its colour tracks your connection against your own normal (white = normal, red = clearly worse).
+- Ownership: it only restores your value while its own value is still in place - if you or another addon changed it, it never overwrites you. No writes in combat, your value goes back before logout, and every write is verified by reading it back.
+- It does not cast, press keys, run a rotation, or read the combat log. It changes only the CVar you could change yourself with /console SpellQueueWindow 200.
+
+Note: do not run it alongside another addon that touches the same CVar.
+
+My other addons
+- [CraftPro](https://www.curseforge.com/wow/addons/craftpro) - record a crafting recipe with one click and see what it needs, what you have and what is still missing.
+- [StockTake](https://www.curseforge.com/wow/addons/stocktake) - hover an item and the tooltip shows how many you own: bags, bank (warband bank included) and every character on your account.
+
+Feedback: [GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues) - MIT license.
+
+### 简体中文
+
+- 按专精给施法容限手感基准（高 APM 近战约 140ms、标准近战约 150ms、坦克略高、法系约 240ms）。
+- 叠上世界延迟与自适应余量（按实测抖动算，30–150ms），取较大的那个。
+- 分场景：城里只用基准值；副本与野外跟随你的延迟。
+- 夹在客户端允许的 0–400ms 内。
+- 登录、换区、进副本 / 团本、或延迟真的漂移时重测；学到的延迟跨会话记住。
+- 只有两个复选框：启用、显示悬浮状态条。
+- 屏幕上的数字是容限值，颜色说的是你的网络 —— 与你自己平时相比，正常白色、明显变差转红。
+- 所有权：只在仍是自己的值时归还；你或别的插件改过，它绝不覆盖。战斗中不写，登出前归还，每次写入读回校验。
+- 不自动施法、不按键、不做输出循环、不读战斗日志。它改的就是你自己也能用 /console SpellQueueWindow 200 改的那个值。
+
+注意：不要与改动同一 CVar 的同类插件同时使用。
+
+我的其他插件
+- [CraftPro](https://www.curseforge.com/wow/addons/craftpro) —— 打开配方点一下按钮，就得到一张材料清单：要什么、有多少、还缺多少。
+- [StockTake](https://www.curseforge.com/wow/addons/stocktake) —— 鼠标移到物品上，提示框直接告诉你全账号持有量（背包、银行、含战团银行、所有角色）。
+
+反馈：[GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues) —— MIT 许可。
+
+### 繁體中文
+
+- 依專精給施法容限手感基準（高 APM 近戰約 140ms、標準近戰約 150ms、坦克略高、法系約 240ms）。
+- 疊上世界延遲與自適應餘量（依實測抖動計算，30–150ms），取較大的那個。
+- 分場景：城裡只用基準值；副本與野外跟隨你的延遲。
+- 夾在用戶端允許的 0–400ms 內。
+- 登入、切換區域、進副本 / 團本、或延遲真的漂移時重測；學到的延遲跨登入記住。
+- 只有兩個核取方塊：啟用、顯示浮動狀態列。
+- 畫面上的數字是容限值，顏色說的是你的網路 —— 與你自己平時相比，正常白色、明顯變差轉紅。
+- 所有權：只在仍是自己的值時歸還；你或別的插件改過，它絕不覆蓋。戰鬥中不寫，登出前歸還，每次寫入讀回驗證。
+- 不自動施法、不按鍵、不做輸出循環、不讀戰鬥紀錄。它改的就是你自己也能用 /console SpellQueueWindow 200 改的那個值。
+
+注意：不要與改動同一 CVar 的同類插件同時使用。
+
+我的其他插件
+- [CraftPro](https://www.curseforge.com/wow/addons/craftpro) —— 打開配方按一下按鈕，就得到一張材料清單：要什麼、有多少、還缺多少。
+- [StockTake](https://www.curseforge.com/wow/addons/stocktake) —— 滑鼠移到物品上，提示資訊直接告訴你全帳號持有量（背包、銀行、含戰隊銀行、所有角色）。
+
+回報：[GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues) —— MIT 授權條款。
