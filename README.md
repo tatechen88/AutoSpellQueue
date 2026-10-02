@@ -1,6 +1,6 @@
 # AutoSpellQueue
 
-> [简体中文](#中文) · [English](#english)
+> [中文](#中文) · [English](#english)
 
 坦克、治疗、近战、远程——每个**专精**的节奏都不一样，插件给每个专精各自的**施法容限**（`SpellQueueWindow`）
 基准值，再用**算法**叠上你的延迟。不是固定数字，也不用你手动调；面板只有两个复选框，关闭时**把你自己原来的值还回去**。
@@ -9,7 +9,7 @@
 > 原名 `Tate_ASQ`（Tate's AutoSpellQueue），v2.0.0 起更名为 **AutoSpellQueue**。
 > **中文界面显示为「施法容限」**（插件列表、设置页标题、聊天提示都是这个名字），英文界面为 `Auto Spell Queue`。
 
-**📖 玩家请直接看 [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md)**（简体 / English 两版全文：这值是什么、
+**📖 玩家请直接看 [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md)**（中文 / English 两版全文：这值是什么、
 为什么默认 400 让人难受、谁受益、怎么确认它在工作、它不做什么）。
 README 只保留「装、跑、验证」这类实用信息（中英各一份）。
 
@@ -257,7 +257,7 @@ MIT - see [`LICENSE`](LICENSE). Feedback via [GitHub Issues](https://github.com/
 
 ---
 
-> 简体中文 · English：两份内容等价。玩家向全文（含"为什么"）在
+> 中文 · English：两份内容等价。玩家向全文（含"为什么"）在
 > [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md)，版本历史（中英双语）在 [`CHANGELOG.md`](CHANGELOG.md)。
 > Simplified Chinese, Traditional Chinese and English; all three say the same things. The player-facing long-form copy lives in
 > [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md) and the version history (bilingual) in [`CHANGELOG.md`](CHANGELOG.md).

@@ -1,7 +1,7 @@
 # CurseForge 商店页材料（上传用副本）
 
 > 性质：`DESCRIPTION.md` 与 `CHANGELOG.md` 的发布用派生副本——事实仍以那两份为唯一出处，
-> 本文件只做三件事：①语言顺序改为 English → 简体中文（CurseForge 规则：英文必须整段在前）；
+> 本文件只做三件事：①语言顺序改为 English → 中文（CurseForge 规则：英文必须整段在前）；
 > ②转成 CF 安全格式（`<…>` 改省略号；粗体两侧与全角字符之间加空格；仓库相对链接退化为纯文本）；
 > ③集中在一处，上传时直接整段复制。改内容请回去改源头，再重新生成本文件。
 
@@ -11,7 +11,7 @@
 
 > Spell queue window tuned per spec: your spec's baseline plus your latency, by algorithm. No fixed number, no manual tuning.
 
-简体中文
+中文
 
 > 按专精自动调整施法容限：专精基准值 + 算法叠加你的延迟；不是固定数字，也不用你手动调。
 
@@ -39,7 +39,7 @@ My other addons
 
 Feedback: [GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues) - MIT license.
 
-### 简体中文
+### 中文
 
 - 按专精给施法容限手感基准（高 APM 近战约 140ms、标准近战约 150ms、坦克略高、法系约 240ms）。
 - 叠上世界延迟与自适应余量（按实测抖动算，30–150ms），取较大的那个。
@@ -74,7 +74,7 @@ Feedback: [GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues) -
 - **Full enUS / zhCN / zhTW localization** (English clients no longer see internal key names).
 - **Upgrading**: delete the old `Tate_ASQ` folder first; to keep old settings, copy `WTF\Account\…\SavedVariables\Tate_ASQ.lua` to `AutoSpellQueue.lua` (the client only loads the file named after the addon folder). Old manual base values migrate into `/asq base`.
 
-### 简体中文
+### 中文
 
 - 换名字了：`Tate_ASQ` → AutoSpellQueue，中文客户端显示为「施法容限」。安装前先删除旧的 `AddOns\Tate_ASQ\` 文件夹（新旧会争抢同一个 CVar）。
 - 不用设置了：设置页从 12 个控件砍到 2 个复选框。余量、写入阈值、延迟来源、窗口上下限全部由插件按实测数据计算。唯一手动口子是 `/asq base <50-400>`。
@@ -84,6 +84,6 @@ Feedback: [GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues) -
 - 战斗中关闭会等脱战再归还你的原值。
 - 悬浮读数的颜色说的是你的网络：正常白色（含边框），明显高于平时转红；失败 / 等待 / 关闭用各自状态色。悬停会写明为什么是红的。
 - 悬停提示摆位：挂在读数下方留间隙；贴屏幕底部自动翻到上方，贴左右边缘自动换对齐——绝不压鼠标、不出屏。
-- 简体中文 / English 双语完整文案。
+- 中文 / English 双语完整文案。
 - 升级：先删旧 `Tate_ASQ` 文件夹；想保留旧设置，把 `WTF\Account\…\SavedVariables\Tate_ASQ.lua` 复制改名为 `AutoSpellQueue.lua`（客户端只加载与插件文件夹同名的存档文件）。旧手动基础值会迁移为 `/asq base` 覆盖值。
 

@@ -1,10 +1,10 @@
 # AutoSpellQueue — 给魔兽玩家的说明 / A player's guide
 
 > **这份文件是面向玩家的唯一文案源。** CurseForge 商店页、GitHub Release 说明、论坛/群里转发的内容，
-> 都从这里取；不要在别处另写一份（会漂移）。简体中文与 English **各自独立成篇**，不是逐句互译。
+> 都从这里取；不要在别处另写一份（会漂移）。中文与 English **各自独立成篇**，不是逐句互译。
 > 开发向文档请去 [`ARCHITECTURE.md`](ARCHITECTURE.md) / [`../README.md`](../README.md)。
 >
-> Store copy, release notes and forum posts all come from this file. The 简体中文 and English sections are
+> Store copy, release notes and forum posts all come from this file. The 中文 and English sections are
 > written independently, not as literal translations of one another.
 
 **目录**：[中文](#中文版) · [English](#english) · [商店页短简介 / Store summary](#商店页短简介--store-summary)
@@ -316,7 +316,7 @@ My other addons
 
 Feedback: [GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues) - MIT license.
 
-### 简体中文
+### 中文
 
 - 按专精给施法容限手感基准（高 APM 近战约 140ms、标准近战约 150ms、坦克略高、法系约 240ms）。
 - 叠上世界延迟与自适应余量（按实测抖动算，30–150ms），取较大的那个。

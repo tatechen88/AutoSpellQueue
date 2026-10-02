@@ -63,7 +63,7 @@
 | # | 素材 | 规格 | 数量 | 状态 | 备注 |
 |---|---|---|---|---|---|
 | 1 | Logo / 项目头像 | **400×400 PNG**（CF 头像规格） | 3 | ✅ `docs/media/logo-400.png`（上传用）+ `logo-512.png` + `logo-master-1024.png` | 原创绘制：深底圆角方 + 悬浮读数条造型（白字 220 ms）+ 底部延迟波形（常态灰白、一处红尖峰）；配色即插件实际配色（白=正常/红=偏高）。**不用暴雪图标做底**（版权），也不再用已废除的品牌绿 |
-| 2 | 截图 | ≥ 1280×720 | 5 | ✅ `docs/media/`（英文 2 + 简中 2 + 语言中立 1） | ① `shot-en-settings.png` 设置页（英文）② `shot-zhcn-settings.png` 设置页（简体中文）③ `shot-world.png` 野外悬浮读数条（1280×720，语言中立：读数只有数字）④ `shot-en-tooltip.png` 面板+读数条+悬停提示（英文）⑤ `shot-zhcn-tooltip.png` 同上（简体中文）。**已逐张目检**：无他人角色名（世界图里 EllesmereUI 姓名板已按 SOP 打码 ≥7px）；面板与读数条同框构图。实拍方式：探针版强制 enUS → 拍摄 → 立即还原（语言表 sha256 一致、游戏内零探针残留） |
+| 2 | 截图 | ≥ 1280×720 | 5 | ✅ `docs/media/`（英文 2 + 简中 2 + 语言中立 1） | ① `shot-en-settings.png` 设置页（英文）② `shot-zhcn-settings.png` 设置页（中文）③ `shot-world.png` 野外悬浮读数条（1280×720，语言中立：读数只有数字）④ `shot-en-tooltip.png` 面板+读数条+悬停提示（英文）⑤ `shot-zhcn-tooltip.png` 同上（中文）。**已逐张目检**：无他人角色名（世界图里 EllesmereUI 姓名板已按 SOP 打码 ≥7px）；面板与读数条同框构图。实拍方式：探针版强制 enUS → 拍摄 → 立即还原（语言表 sha256 一致、游戏内零探针残留） |
 | 3 | 简介 Summary | 单段 | en + zhCN + zhTW | ✅ [`DESCRIPTION.md`](DESCRIPTION.md) 末节「商店页短简介」 | 第一句必须说清「只改本地 CVar、不自动施法」 |
 | 4 | 详细描述 | Markdown/HTML | en + zhCN | ✅ [`DESCRIPTION.md`](DESCRIPTION.md)（三语各自独立成篇） | 必查清单见下 |
 | 5 | 分类 | WoW 类目 | 1 | 建议 **Combat** | 与 `.toc` 的 `## Category` 必须一致 |
