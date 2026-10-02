@@ -121,7 +121,7 @@ pwsh tools/verify.ps1 -Package   # 追加 dist/AutoSpellQueue-<version>.zip
 
 - 命名占用检查 ✓：CurseForge 无同名 `AutoSpellQueue`（竞品：SpellQueueOptimizer / TSpellQueueOptimizer /
   SSQW / AyuQueue——文案差异点已有：三语、抖动自适应余量、事件驱动采样、所有权归还、极简 UI）。
-- 素材齐备：`docs/media/`（logo + 三语截图）、三语文案 `docs/DESCRIPTION.md`。
+- 素材齐备：`docs/media/`（logo + 三语截图）、双语文案 `docs/DESCRIPTION.md`。
 
 本轮 computer-use 探测结论（恢复时直接用，别再踩）：
 
@@ -135,7 +135,7 @@ pwsh tools/verify.ps1 -Package   # 追加 dist/AutoSpellQueue-<version>.zip
 
 辅助脚本已留在 `.scratch/cf_helper.ps1`（Look/ClickAt/TypeAt/FindText，gitignored）。
 恢复流程：拿到玩家参考后的流程 → 建项目（游戏 WoW / 类型 Addon / 分类 Combat）→ **拿到 Project-ID 先写进 `.toc`** →
-`verify.ps1 -Package` → 上传 zip → 商店页填三语文案与素材。
+`verify.ps1 -Package` → 上传 zip → 商店页填双语文案与素材。
 
 ## 下一步
 

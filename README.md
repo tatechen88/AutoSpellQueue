@@ -1,6 +1,6 @@
 # AutoSpellQueue
 
-> 简体中文 · [繁體中文](#zh-hant) · [English](#english)
+> [简体中文](#中文) · [English](#english)
 
 坦克、治疗、近战、远程——每个**专精**的节奏都不一样，插件给每个专精各自的**施法容限**（`SpellQueueWindow`）
 基准值，再用**算法**叠上你的延迟。不是固定数字，也不用你手动调；面板只有两个复选框，关闭时**把你自己原来的值还回去**。
@@ -9,7 +9,7 @@
 > 原名 `Tate_ASQ`（Tate's AutoSpellQueue），v2.0.0 起更名为 **AutoSpellQueue**。
 > **中文界面显示为「施法容限」**（插件列表、设置页标题、聊天提示都是这个名字），英文界面为 `Auto Spell Queue`。
 
-**📖 玩家请直接看 [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md)**（简体 / 繁體 / English 三版全文：这值是什么、
+**📖 玩家请直接看 [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md)**（简体 / English 两版全文：这值是什么、
 为什么默认 400 让人难受、谁受益、怎么确认它在工作、它不做什么）。
 README 只保留「装、跑、验证」这类实用信息（中英各一份）。
 
@@ -127,87 +127,6 @@ docs/                         # 文档（不进发布包）
 ---
 
 <a id="zh-hant"></a>
-
-# 繁體中文
-
-坦克、治療、近戰、遠程——每個**專精**的節奏都不一樣，插件給每個專精各自的**施法容限**（`SpellQueueWindow`）
-基準值，再用**演算法**疊上你的延遲。不是固定數字，也不用你手動調；設定頁只有兩個核取方塊，關閉時**把你自己原本的值還回去**。
-
-> 正式服 12.x（12.0.0–12.1.5）· v2.0.0 · MIT · 介面語言 enUS / zhCN / zhTW
-> 原名 `Tate_ASQ`（Tate's AutoSpellQueue），v2.0.0 起更名為 **AutoSpellQueue**。
-> **中文介面顯示為「施法容限」**（插件清單、設定頁標題、聊天提示都是這個名字），英文介面為 `Auto Spell Queue`。
-
-**📖 玩家請直接看 [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md)**（簡體 / 繁體 / English 三版全文：這個值是什麼、
-為什麼預設 400 讓人難受、誰受益、怎麼確認它在工作、它不做什麼）。
-README 只保留「安裝、執行、驗證」這類實用資訊（簡體 / 繁體 / English 各一份）。
-
-## 功能
-
-- 依專精給施法容限手感基準（高 APM 近戰約 140ms、標準近戰約 150ms、坦克略高、法系約 240ms）。
-- 疊上世界延遲與自適應餘量（依實測抖動計算，30–150ms），取較大的那個。
-- 分場景：城裡只用基準值；副本與野外跟隨你的延遲。
-- 夾在用戶端允許的 0–400ms 內。
-- 登入、切換區域、進副本 / 團本、或延遲真的漂移時重測；學到的延遲跨登入記住。
-- 只有兩個核取方塊：啟用、顯示浮動狀態列。
-- 畫面上的數字是容限值，顏色說的是你的網路。
-- 所有權：只在仍是自己的值時歸還；你或別的插件改過，它絕不覆蓋。戰鬥中不寫，登出前歸還，每次寫入讀回驗證。
-- 不自動施法、不按鍵、不做輸出循環、不讀戰鬥紀錄。它改的就是你自己也能用 /console SpellQueueWindow 200 改的那個值。
-## 安裝（繁體）
-
-1. 下載 [Releases](https://github.com/tatechen88/AutoSpellQueue/releases) 裡的 zip。
-2. 解壓縮到 `World of Warcraft\_retail_\Interface\AddOns\`，得到 `AddOns\AutoSpellQueue\`。
-3. 進入遊戲。**預設就是開啟的，不需要設定——設定頁裡只有兩個核取方塊。**
-
-設定入口：遊戲內 **選項 → 插件 → 施法容限**（英文介面為 `Auto Spell Queue`），或 `/asq`，或左鍵點浮動狀態列。
-設定頁與姊妹插件 **StockTake** 同一套做法：暴雪原生控制項、零自繪、只有四個元素
-（標題、一行狀態、兩個核取方塊、一個「重設位置」按鈕），說明放在滑鼠停留提示裡。
-
-**設定頁裡只有兩個核取方塊**：「啟用自動調整」（總開關）和「顯示浮動狀態列」。
-安全餘量、寫入門檻、延遲來源、視窗上下限、多久偵測一次，全部由插件依實測資料自行決定——
-把旋鈕交給玩家，等於把「調得好不好」的責任推給玩家。
-唯一的手動出口是指令列的 `/asq base <50-400>`（某個專精的基礎值你不同意時才用），它**不出現在設定頁裡**。
-
-**畫面上的數字會說話**：數字本身是容限值（比如 `220 ms`），但它的**顏色**說的是你的網路——
-延遲正常時白色（邊框一起白），明顯高於你平時的水準就轉紅；失敗 / 等待 / 關閉用各自的狀態色。
-判斷標準是相對**你自己平時**的延遲（`平時 + 60ms`，下限 120ms、上限 250ms），
-所以平時就 200ms 的人不會永遠看到紅色。滑鼠移到狀態列上會寫明「為什麼是紅的」。
-
-**它不會一直偵測**：登入 / 切換區域 / 進副本團本時取樣一小段，讀數穩定後**停止取樣**，
-之後每 300 秒只做一次廉價的漂移檢查（真的漂移了才重新取樣）。學到的延遲會記住，下次登入立刻用上。
-
-### 從舊版 `Tate_ASQ` 升級
-
-1. **刪掉舊的 `AddOns\Tate_ASQ` 資料夾**（新舊會爭搶同一個 CVar）。
-2. 想保留舊設定的話，把
-   `WTF\Account\<帳號>\SavedVariables\Tate_ASQ.lua` 複製一份並改名為同目錄的 `AutoSpellQueue.lua`。
-   用戶端**只載入與插件資料夾同名的存檔檔案**，不複製就回到預設設定（也能用）。
-   舊版的手動基礎值會被遷移為 `/asq base` 的覆寫值，其餘旋鈕（餘量、遲滯、延遲來源等）隨版本退休。
-
-### 一分鐘上手
-
-| 我想…… | 怎麼做 |
-|---|---|
-| 看現在的值 | `/dump GetCVar("SpellQueueWindow")` |
-| 看它為什麼是這個值 | `/asq` → 狀態列、停留提示裡有完整算式（含自適應餘量） |
-| 看診斷（含演算法目前的餘量/抖動/取樣策略/寫入次數） | `/asq status` |
-| 臨時全關、把值還給我 | `/asq` 裡取消勾選總開關（戰鬥中點擊會等到脫離戰鬥） |
-| 狀態列跑到畫面外了 | `/asq resetpos`（`/asq unlock` 同義）——立即拉回畫面內的預設位置 |
-| 某個專精的基礎值我想自己定 | `/asq base 180`（恢復自動：`/asq base auto`） |
-
-### 它不做什麼
-
-不自動施法、不代按鍵、不做輸出循環、不讀戰鬥紀錄、不連網、無遙測。
-它改的就是**你自己也能用 `/console SpellQueueWindow 200` 改的那個數字**。
-
-## 我的其他插件
-
-- [CraftPro](https://www.curseforge.com/wow/addons/craftpro) —— 打開配方按一下按鈕，就得到一張材料清單：要什麼、有多少、還缺多少。
-- [StockTake](https://www.curseforge.com/wow/addons/stocktake) —— 滑鼠移到物品上，提示資訊直接告訴你全帳號持有量（背包、銀行、含戰隊銀行、所有角色）。
-### 授權條款
-
-MIT，見 [`LICENSE`](LICENSE)。回報問題走 [GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues)。
-
-<a id="english"></a>
 
 # English
 
@@ -338,7 +257,7 @@ MIT - see [`LICENSE`](LICENSE). Feedback via [GitHub Issues](https://github.com/
 
 ---
 
-> 简体中文 · 繁體中文 · English：三份内容等价。玩家向全文（含"为什么"）在
+> 简体中文 · English：两份内容等价。玩家向全文（含"为什么"）在
 > [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md)，版本历史（中英双语）在 [`CHANGELOG.md`](CHANGELOG.md)。
 > Simplified Chinese, Traditional Chinese and English; all three say the same things. The player-facing long-form copy lives in
 > [`docs/DESCRIPTION.md`](docs/DESCRIPTION.md) and the version history (bilingual) in [`CHANGELOG.md`](CHANGELOG.md).

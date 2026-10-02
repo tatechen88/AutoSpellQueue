@@ -33,5 +33,5 @@ pwsh tools/verify.ps1 -Package # 追加打包：dist/AutoSpellQueue-<version>.zi
   位运算符、`table.unpack`、`setfenv`、`loadstring`、`math.mod`、`newproxy`（lint 会拦）。
 - **不写会烂的数字**：版本号只从 `.toc` 读；测试数量、包体积、哈希这类改成「用哪条命令取」。
 - 不提交任何密钥；CI 只引用 secret 名称（如 `CF_API_KEY`），值只存在于 GitHub Secrets。
-- **语言称谓只用「简体中文 / 繁體中文 / English」（代码 `zhCN` / `zhTW` / `enUS`）**，任何文档、文案、提交说明里都不用地区名来指代语言变体。
-- 版本号改动顺序：先写 `CHANGELOG.md` 条目（简体 / 繁體 / English 三语）→ 再改 `.toc` → 再跑 `verify.ps1`。
+- **文档语言只维护「简体中文 / English」两份**（2026-10-02 起取消繁體文档）；**游戏内语言表仍是三语**（代码 `zhCN` / `zhTW` / `enUS`，见 `AutoSpellQueue_Locale.lua` 与 `.toc` 的 `Title-*`），不要因为文档调整而删代码语言键。任何文档、文案、提交说明里都不用地区名来指代语言变体。
+- 版本号改动顺序：先写 `CHANGELOG.md` 条目（简体 / English 双语）→ 再改 `.toc` → 再跑 `verify.ps1`。
