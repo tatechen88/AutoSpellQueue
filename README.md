@@ -15,6 +15,17 @@ README 只保留「装、跑、验证」这类实用信息（中英各一份）�
 
 ---
 
+## 功能
+
+- 按专精给施法容限手感基准（高 APM 近战约 140ms、标准近战约 150ms、坦克略高、法系约 240ms）。
+- 叠上世界延迟与自适应余量（按实测抖动算，30–150ms），取较大的那个。
+- 分场景：城里只用基准值；副本与野外跟随你的延迟。
+- 夹在客户端允许的 0–400ms 内。
+- 登录、换区、进副本 / 团本、或延迟真的漂移时重测；学到的延迟跨会话记住。
+- 只有两个复选框：启用、显示悬浮状态条。
+- 屏幕上的数字是容限值，颜色说的是你的网络。
+- 所有权：只在仍是自己的值时归还；你或别的插件改过，它绝不覆盖。战斗中不写，登出前归还，每次写入读回校验。
+- 不自动施法、不按键、不做输出循环、不读战斗日志。它改的就是你自己也能用 /console SpellQueueWindow 200 改的那个值。
 ## 装（中文）
 
 1. 下载 [Releases](https://github.com/tatechen88/AutoSpellQueue/releases) 里的 zip。
@@ -62,6 +73,10 @@ README 只保留「装、跑、验证」这类实用信息（中英各一份）�
 不自动施法、不代按键、不做输出循环、不读战斗日志、不联网、无遥测。
 它改的就是**你自己也能用 `/console SpellQueueWindow 200` 改的那个数字**。
 
+## 我的其他插件
+
+- [CraftPro](https://www.curseforge.com/wow/addons/craftpro) —— 打开配方点一下按钮，就得到一张材料清单：要什么、有多少、还缺多少。
+- [StockTake](https://www.curseforge.com/wow/addons/stocktake) —— 鼠标移到物品上，提示框直接告诉你全账号持有量（背包、银行、含战团银行、所有角色）。
 ### 许可证
 
 MIT，见 [`LICENSE`](LICENSE)。反馈走 [GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues)。
@@ -126,6 +141,17 @@ docs/                         # 文档（不进发布包）
 為什麼預設 400 讓人難受、誰受益、怎麼確認它在工作、它不做什麼）。
 README 只保留「安裝、執行、驗證」這類實用資訊（簡體 / 繁體 / English 各一份）。
 
+## 功能
+
+- 依專精給施法容限手感基準（高 APM 近戰約 140ms、標準近戰約 150ms、坦克略高、法系約 240ms）。
+- 疊上世界延遲與自適應餘量（依實測抖動計算，30–150ms），取較大的那個。
+- 分場景：城裡只用基準值；副本與野外跟隨你的延遲。
+- 夾在用戶端允許的 0–400ms 內。
+- 登入、切換區域、進副本 / 團本、或延遲真的漂移時重測；學到的延遲跨登入記住。
+- 只有兩個核取方塊：啟用、顯示浮動狀態列。
+- 畫面上的數字是容限值，顏色說的是你的網路。
+- 所有權：只在仍是自己的值時歸還；你或別的插件改過，它絕不覆蓋。戰鬥中不寫，登出前歸還，每次寫入讀回驗證。
+- 不自動施法、不按鍵、不做輸出循環、不讀戰鬥紀錄。它改的就是你自己也能用 /console SpellQueueWindow 200 改的那個值。
 ## 安裝（繁體）
 
 1. 下載 [Releases](https://github.com/tatechen88/AutoSpellQueue/releases) 裡的 zip。
@@ -173,6 +199,10 @@ README 只保留「安裝、執行、驗證」這類實用資訊（簡體 / 繁�
 不自動施法、不代按鍵、不做輸出循環、不讀戰鬥紀錄、不連網、無遙測。
 它改的就是**你自己也能用 `/console SpellQueueWindow 200` 改的那個數字**。
 
+## 我的其他插件
+
+- [CraftPro](https://www.curseforge.com/wow/addons/craftpro) —— 打開配方按一下按鈕，就得到一張材料清單：要什麼、有多少、還缺多少。
+- [StockTake](https://www.curseforge.com/wow/addons/stocktake) —— 滑鼠移到物品上，提示資訊直接告訴你全帳號持有量（背包、銀行、含戰隊銀行、所有角色）。
 ### 授權條款
 
 MIT，見 [`LICENSE`](LICENSE)。回報問題走 [GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues)。
@@ -193,6 +223,17 @@ and no manual tuning; two checkboxes, and **your own value** comes back when it 
 (what the setting is, why the 400 ms default feels bad, who benefits, how to confirm it works, what it never does).
 This README keeps only practical information, in both languages.
 
+## Features
+
+- Per-spec feel baseline (~140 ms high-APM melee, ~150 ms standard melee, slightly higher for tanks, ~240 ms for casters).
+- Adds your world latency plus adaptive headroom (30-150 ms, from measured jitter), whichever is larger.
+- Context-aware: cities use the baseline only; instances and the open world follow your latency.
+- Clamped to the client's 0-400 ms range.
+- Re-measures on login, zone change, entering a dungeon or raid, or real latency drift; learned latency is remembered across sessions.
+- Two checkboxes: enable, and show the floating status bar.
+- The number on screen is the tolerance value; its colour tracks your connection against your own normal.
+- Ownership: it only restores your value while its own value is still in place; if you or another addon changed it, it never overwrites you. No writes in combat, and every write is verified by reading it back.
+- It does not cast, press keys, run a rotation, or read the combat log. It changes only the CVar you could change yourself with /console SpellQueueWindow 200.
 ## Install
 
 1. Download the zip from [Releases](https://github.com/tatechen88/AutoSpellQueue/releases).
@@ -287,6 +328,10 @@ docs/                         # documentation (not shipped)
 The release package contains exactly the **7 runtime files** under `AutoSpellQueue/` (one `.toc` + six `.lua`),
 enforced by `tools/package.ps1`; structure and fingerprint rules live in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+## My other addons
+
+- [CraftPro](https://www.curseforge.com/wow/addons/craftpro) - record a crafting recipe with one click and see what it needs, what you have and what is still missing.
+- [StockTake](https://www.curseforge.com/wow/addons/stocktake) - hover an item and the tooltip shows how many you own: bags, bank (warband bank included) and every character on your account.
 ## License
 
 MIT - see [`LICENSE`](LICENSE). Feedback via [GitHub Issues](https://github.com/tatechen88/AutoSpellQueue/issues).
